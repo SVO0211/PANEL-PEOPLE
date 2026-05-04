@@ -3223,6 +3223,45 @@ function fmtDate(d){if(!d)return'—';const dt=new Date(d+'T12:00:00');return dt
 // ── modal ────────────────────────────────────────────
 function closePAModal(){document.getElementById('pamo').classList.remove('open');editingPA=null;paEvidencias=[];}
 
+function savePAActivity(){
+  const actividad = (document.getElementById('pa-actividad')?.value||'').trim();
+  if(!actividad){ alert('La actividad es obligatoria.'); return; }
+  const responsable = (document.getElementById('pa-resp')?.value||'').trim();
+  const persona     = (document.getElementById('pa-persona')?.value||'').trim();
+  const fecha       = document.getElementById('pa-fecha')?.value||'';
+  const prioridad   = document.getElementById('pa-prioridad')?.value||'media';
+  const estado      = document.getElementById('pa-estado')?.value||'pendiente';
+  const avance      = parseInt(document.getElementById('pa-avance')?.value||0)||0;
+  const observaciones = (document.getElementById('pa-obs')?.value||'').trim();
+
+  if(editingPA){
+    // Edit existing
+    const a = PA.find(x=>x.id===editingPA);
+    if(a){
+      a.actividad=actividad; a.responsable=responsable; a.persona=persona;
+      a.fecha=fecha; a.prioridad=prioridad; a.estado=estado;
+      a.avance=avance; a.observaciones=observaciones;
+      a.evidencias=paEvidencias.slice();
+      a.actualizadoEn=new Date().toISOString();
+    }
+    showToast('✓ Actividad actualizada');
+  } else {
+    // New activity
+    PA.push({
+      id:'pa_'+Date.now(), actividad, responsable, persona,
+      fecha, prioridad, estado, avance, observaciones,
+      evidencias:paEvidencias.slice(),
+      creadoEn:new Date().toISOString(),
+      actualizadoEn:new Date().toISOString()
+    });
+    showToast('✓ Actividad creada');
+  }
+  savePAData();
+  if(_fbReady) setTimeout(fbSavePA,0);
+  closePAModal();
+  renderPA();
+}
+
 function syncEstadoFromAvance(v){
   const n=parseInt(v);
   const sel=document.getElementById('pa-estado');
@@ -3393,15 +3432,27 @@ function saveEdit(){
 
   if(editCed==='__new__'){
     if(!nombre){ alert('El nombre es obligatorio.'); return; }
+    // Set all active surveys as pending (❌) for new collaborators
+    const surveyDefaults = {};
+    (typeof SURVEYS !== 'undefined' ? SURVEYS : []).filter(s=>s.activa).forEach(s=>{ surveyDefaults[s.id]='❌'; });
+    const totalEnc = Object.keys(surveyDefaults).length;
+    const encPendientes = Object.values(surveyDefaults).filter(v=>v==='❌').map((v,i)=>{
+      const key = Object.keys(surveyDefaults)[i];
+      const sv = SURVEYS.find(s=>s.id===key);
+      return sv ? sv.nombre : key;
+    });
     DATA.push({
       cedula:'NEW_'+Date.now(), nombre, cargo:cargo||'Sin cargo', qr:'—',
       satisfaccion:'⚪', principios:'⚪', gemba:'⚪', buzon:'⚪',
-      engagement:'⚪', seg_psico:'⚪', corridas:0, pendientes:0, pct:0, detalle:'—',
+      engagement:'⚪', seg_psico:'⚪',
+      ...surveyDefaults,
+      corridas:0, pendientes:totalEnc, pct:0,
+      detalle: encPendientes.slice(0,3).join(', ')+(encPendientes.length>3?'…':'') || '—',
       phone, edad, ingreso, skap, tags, cualidades:qs,
       rol:_editRol, padrinoCed, photo:editPhotoB64||'', _custom:true
     });
     save(); closeEdit(); render();
-    showToast('✓ Tarjeta creada para '+nombre.split(' ')[0]);
+    showToast('✓ Tarjeta creada para '+nombre.split(' ')[0]+(totalEnc?' — '+totalEnc+' encuestas pendientes':''));
     return;
   }
 
@@ -3594,7 +3645,7 @@ ${infoBar}${blockedBar}
   ${rr&&rr.length?`<div class="cp-panel cp-panel-rr" style="display:none;padding:.5rem 0">
     <table class="rr-table">
       <thead><tr><th style="width:30px">Mes</th><th style="width:70px">Cliente</th><th>Causa Raíz</th><th>Solución</th></tr></thead>
-      <tbody>${rr.map(r=>'<tr><td class="rr-td-mes">'+r.m+'</td><td class="rr-td-cli">'+(r.cc?'<span class="rr-cod">'+r.cc+'</span>':'')+'<span class="rr-nom">'+(r.nc||'—')+'</span></td><td class="rr-td-causa">'+r.c+'</td><td class="rr-td-sol">'+r.s+'</td></tr>').join('')}</tbody>
+      <tbody>${rr.map(r=>'<tr><td class="rr-td-mes">'+(r.ms||r.m||'—')+'</td><td class="rr-td-cli">'+(r.cc?'<span class="rr-cod">'+r.cc+'</span>':'')+'<span class="rr-nom">'+(r.nc||'—')+'</span></td><td class="rr-td-causa">'+r.c+'</td><td class="rr-td-sol">'+r.s+'</td></tr>').join('')}</tbody>
     </table>
   </div>`:`<div class="cp-panel cp-panel-rr" style="display:none;padding:.8rem;text-align:center;color:var(--text3);font-size:.72rem">
     <div style="font-size:1.5rem;margin-bottom:4px">✅</div>Sin reportes en ruta registrados</div>`}
@@ -5074,7 +5125,7 @@ function processUploadedRows(rows, type, filename, label, stat, zone, prev){
     });
     const summary={};
     Object.keys(processed).forEach(function(cc){
-      summary[cc]=processed[cc].sort(function(a,b){return a.mo-b.mo;}).map(function(r){return{m:r.m,c:r.c,s:r.s};});
+      summary[cc]=processed[cc].sort(function(a,b){return a.mo-b.mo;}).map(function(r){return{ms:r.m,c:r.c,s:r.s,cc:r.cc||'',nc:r.nc||''};});
     });
     _uploadedRR=summary;
     const cnt=Object.keys(summary).length;

@@ -5017,12 +5017,17 @@ function processUploadedRows(rows, type, filename, label, stat, zone, prev){
       const rmd_raw = parseFloat(row['RMD']||0)||0;
       const rmd_pct = rmd_raw<=5 ? Math.round(rmd_raw/5*1000)/10 : rmd_raw; // 1-5 → 0-100%
       const placa = String(row['PLACA DEL VEHÍCULO']||row['PLACA']||'');
+      const entrega_raw = parseFloat(row['ENTREGA']||row['% ENTREGA']||row['EFECTIVIDAD ENTREGA']||row['Efectividad']||0)||undefined;
+      const rechazo_raw = parseFloat(row['RECHAZOS']||row['RECHAZO']||row['# RECHAZOS']||row['Rechazos']||0)||undefined;
       if(!fecha_str||!rmd_pct) return;
       cc_cols.forEach(function(col){
         const cc = safe_cc_js(row[col]);
         if(!cc) return;
         if(!processed[cc]) processed[cc]=[];
-        processed[cc].push({f:fecha_str, p:placa, r:rmd_pct});
+        const rec = {f:fecha_str, p:placa, r:rmd_pct};
+        if(entrega_raw!==undefined && !isNaN(entrega_raw)) rec.e = Math.round(entrega_raw*10)/10;
+        if(rechazo_raw!==undefined && !isNaN(rechazo_raw)) rec.rc = Math.round(rechazo_raw*100)/100;
+        processed[cc].push(rec);
       });
     });
     // Build summaries
@@ -5101,7 +5106,7 @@ function applyUploadedData(){
           // Remove existing records for same months (replace), keep others
           const newMonths = new Set(newRecs.map(function(r){return r.m;}));
           PEOPLE_DATA.vi[cc].hist = PEOPLE_DATA.vi[cc].hist.filter(function(h){return !newMonths.has(h.m);});
-          PEOPLE_DATA.vi[cc].hist = PEOPLE_DATA.vi[cc].hist.concat(newRecs.map(function(r){return {m:r.m,c:r.c,p:r.p};}));
+          PEOPLE_DATA.vi[cc].hist = PEOPLE_DATA.vi[cc].hist.concat(newRecs.map(function(r){return {m:r.m,c:r.c,v:r.v||0,p:r.p||0};}));
           // Sort by month order
           const monthOrder = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
           PEOPLE_DATA.vi[cc].hist.sort(function(a,b){return monthOrder.indexOf(a.m)-monthOrder.indexOf(b.m);});
@@ -5111,8 +5116,8 @@ function applyUploadedData(){
           PEOPLE_DATA.vi[cc].ultimo = last.m;
           PEOPLE_DATA.vi[cc].uc = last.c;
           PEOPLE_DATA.vi[cc].avg = Math.round(avg*10)/10;
-          PEOPLE_DATA.vi[cc].uv = newRecs[newRecs.length-1].v||0;
-          PEOPLE_DATA.vi[cc].up = newRecs[newRecs.length-1].p||0;
+          PEOPLE_DATA.vi[cc].uv = last.v||0;
+          PEOPLE_DATA.vi[cc].up = last.p||0;
           updated++;
         });
       }
@@ -5147,18 +5152,24 @@ function applyUploadedData(){
       }
 
       // Merge RR data (accumulative by CC)
+      // _uploadedRR[cc] es un array directo de {m,c,s,...}
       if(_uploadedRR){
         if(!window.RR_DATA) window.RR_DATA={};
         Object.keys(_uploadedRR).forEach(function(cc){
+          const newItems = Array.isArray(_uploadedRR[cc]) ? _uploadedRR[cc] : (_uploadedRR[cc].i||[]);
+          const normalized = newItems.map(function(r){
+            return {ms:r.m||r.ms||'?', c:r.c||'', s:r.s||'', cc:r.cc||'', nc:r.nc||''};
+          });
           if(!RR_DATA[cc]){
-            RR_DATA[cc]=_uploadedRR[cc];
+            const meses=[...new Set(normalized.map(function(i){return i.ms;}))];
+            RR_DATA[cc]={t:normalized.length, m:meses, i:normalized};
           } else {
-            // Merge items, keep total updated
-            const existing=RR_DATA[cc].i||[];
-            const newItems=_uploadedRR[cc].i||[];
-            const merged=existing.concat(newItems).slice(0,12);
+            const existing = Array.isArray(RR_DATA[cc]) ? RR_DATA[cc] : (RR_DATA[cc].i||[]);
+            const seen = new Set(existing.map(function(i){return i.ms+'|'+i.c;}));
+            const toAdd = normalized.filter(function(i){return !seen.has(i.ms+'|'+i.c);});
+            const merged = existing.concat(toAdd);
             const allMeses=[...new Set(merged.map(function(i){return i.ms;}))];
-            RR_DATA[cc]={t:RR_DATA[cc].t+_uploadedRR[cc].t, m:allMeses, i:merged.slice(0,6)};
+            RR_DATA[cc]={t:merged.length, m:allMeses, i:merged};
           }
           updated++;
         });
@@ -5245,6 +5256,13 @@ function selectVIMonth(cardId, idx){
     const col = c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)';
     const sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
     if(sv0){ sv0.style.color=col; sv0.textContent=c+'%'; }
+    // Actualizar Valor ($)
+    const sv2 = statsEl.children[2] && statsEl.children[2].querySelector('.vi-sv');
+    if(sv2){
+      const v = h.v||0;
+      sv2.textContent = '$'+(v>0?Math.round(v).toLocaleString('es-CO'):'0');
+    }
+    // Actualizar Pagado ($)
     const sv3 = statsEl.children[3] && statsEl.children[3].querySelector('.vi-sv');
     if(sv3){
       sv3.textContent = p>0?'$'+Math.round(p).toLocaleString('es-CO'):'$0';

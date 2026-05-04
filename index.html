@@ -1105,6 +1105,24 @@ body.dark .hdr-tool-btn.gold{background:rgba(245,200,66,.08);border-color:rgba(2
 /* override grid layout for blocked cards */
 .cards-list .block-overlay{border-radius:10px}
 
+/* ── LIST VIEW: show card-pilars tabs below the row ── */
+.cards-list .card{
+  grid-template-columns:3px 200px 1fr auto auto;
+  grid-template-rows:auto auto;
+  align-items:start;
+}
+.cards-list .cha{align-self:center}
+.cards-list .es{align-self:center}
+.cards-list .sk{align-self:center}
+.cards-list .cf{align-self:center}
+.cards-list .card-pilars{
+  grid-column:1/-1;
+  grid-row:2;
+  border-top:1px solid var(--border);
+}
+.cards-list .cp-tabs{background:var(--surface2)}
+.cards-list .cp-panel{padding:.5rem .9rem .55rem}
+
 /* ── KPI CLICKABLE CARDS ── */
 .kpi-clickable{transition:all .18s;cursor:default}
 .kpi-clickable[onclick]{cursor:pointer}
@@ -3523,7 +3541,7 @@ ${infoBar}${blockedBar}
   <div class="cp-tabs">
     <button class="cp-tab cp-tab-people active" onclick="switchPilar('${cardId}','people')">👥 People</button>
     ${rmd?`<button class="cp-tab cp-tab-delivery" onclick="switchPilar('${cardId}','delivery')">🚚 Delivery</button>`:''}
-    ${rr&&rr.length?`<button class="cp-tab cp-tab-rr" onclick="switchPilar('${cardId}','rr')">⚠️ Reportes</button>`:''}
+    <button class="cp-tab cp-tab-rr" onclick="switchPilar('${cardId}','rr')">${rr&&rr.length?`⚠️ Reportes <span style="background:var(--red);color:#fff;border-radius:99px;padding:0 5px;font-size:.55rem;font-weight:800;margin-left:2px">${rr.length}</span>`:'⚠️ Reportes'}</button>
   </div>
   <div class="cp-panel cp-panel-people">
     <div class="sk-compact">
@@ -3578,7 +3596,8 @@ ${infoBar}${blockedBar}
       <thead><tr><th style="width:30px">Mes</th><th style="width:70px">Cliente</th><th>Causa Raíz</th><th>Solución</th></tr></thead>
       <tbody>${rr.map(r=>'<tr><td class="rr-td-mes">'+r.m+'</td><td class="rr-td-cli">'+(r.cc?'<span class="rr-cod">'+r.cc+'</span>':'')+'<span class="rr-nom">'+(r.nc||'—')+'</span></td><td class="rr-td-causa">'+r.c+'</td><td class="rr-td-sol">'+r.s+'</td></tr>').join('')}</tbody>
     </table>
-  </div>`:''}
+  </div>`:`<div class="cp-panel cp-panel-rr" style="display:none;padding:.8rem;text-align:center;color:var(--text3);font-size:.72rem">
+    <div style="font-size:1.5rem;margin-bottom:4px">✅</div>Sin reportes en ruta registrados</div>`}
 </div>
 
 <div class="cf ${isA?'cf-admin':'cf-viewer'}">${adminBtns}
@@ -5329,7 +5348,8 @@ async function fbSave(){
         padrinoCed:   u.padrinoCed||'',
         bloqueado:    u.bloqueado||u.blocked||false,
         bloqueadoRazon: u.bloqueadoRazon||u.blockReason||'',
-        updatedAt:    new Date().toISOString()
+        updatedAt:    new Date().toISOString(),
+        photo:        u.photo&&u.photo.length<500000 ? u.photo : '' // Guardar foto en Firebase si es <500KB
       }, {merge:true});
     });
     await Promise.all(batch);
@@ -5411,7 +5431,7 @@ async function fbLoadAll(){
           pendientes:   d.pendientes!==undefined?d.pendientes:u.pendientes,
           detalle:      d.detalle||u.detalle,
           phone:        d.phone||u.phone,
-          photo:        u.photo||'', // foto se mantiene de localStorage, no de Firestore
+          photo:        d.photo||u.photo||'', // Cargar foto desde Firebase o mantener local
           tags:         d.tags||u.tags,
           edad:         d.edad||u.edad,
           ingreso:      d.ingreso||u.ingreso,

@@ -5521,19 +5521,20 @@ function applyUploadedData(){
           updated++;
         });
       }
-      // Save to localStorage for persistence (cache offline)
+      // Sync to Firebase (cloud — shared across all devices)
+      // Firebase es la fuente de verdad. localStorage solo como caché secundario.
+      const cloudPromises = [];
+      const fbReady = (typeof _fbReady!=='undefined' && _fbReady) || (window._fb != null);
+      if(fbReady){
+        if(!_fbReady){ _fbReady = true; } // asegurar flag
+        if(_uploadedVI || _uploadedIC) cloudPromises.push(fbSavePeopleData());
+        if(_uploadedRR) cloudPromises.push(fbSaveRRData());
+      }
+      // Guardar en localStorage SOLO como caché local (no como fuente primaria)
       try{
         localStorage.setItem('enc_people_data', JSON.stringify(PEOPLE_DATA));
         if(typeof RR_DATA!=='undefined') localStorage.setItem('enc_rr_data', JSON.stringify(RR_DATA));
       } catch(e){ console.warn('localStorage full:', e); }
-
-      // Sync to Firebase (cloud — shared across all devices)
-      // Esperamos a que termine para confirmar al usuario que la nube YA tiene los datos.
-      const cloudPromises = [];
-      if(typeof _fbReady!=='undefined' && _fbReady){
-        if(_uploadedVI || _uploadedIC) cloudPromises.push(fbSavePeopleData());
-        if(_uploadedRR) cloudPromises.push(fbSaveRRData());
-      }
 
       const res = document.getElementById('upload-result');
       res.style.display='block';
@@ -5560,13 +5561,40 @@ function applyUploadedData(){
           res.innerHTML='⚠ Datos guardados localmente, pero falló la sincronización con la nube. Detalle: '+(err && err.message ? err.message : 'error desconocido')+'. Los datos NO estarán disponibles en otros dispositivos hasta que se sincronicen.';
         });
       } else {
-        // Sin Firebase — solo local
+        // Firebase aún no listo — intentar guardar cuando esté disponible
         document.getElementById('upload-loading').style.display='none';
         res.style.background='var(--amber-light)';
         res.style.border='1px solid var(--amber-muted)';
         res.style.color='var(--amber)';
-        res.innerHTML='⚠ '+updated+' personas actualizadas solo en este dispositivo (sin conexión a la nube). Los datos NO se verán en otros dispositivos.';
-        setTimeout(function(){closeUploadModal();}, 3500);
+        res.innerHTML='⏳ '+updated+' personas actualizadas. Esperando conexión a la nube...';
+        // Reintentar hasta 10 segundos
+        var retryCount = 0;
+        var retryInterval = setInterval(function(){
+          retryCount++;
+          if((typeof _fbReady!=='undefined'&&_fbReady) || window._fb){
+            if(!_fbReady) _fbReady = true;
+            clearInterval(retryInterval);
+            var retryPromises = [];
+            if(_uploadedVI || _uploadedIC) retryPromises.push(fbSavePeopleData());
+            if(_uploadedRR) retryPromises.push(fbSaveRRData());
+            Promise.all(retryPromises).then(function(){
+              res.style.background='var(--green-light)';
+              res.style.border='1px solid var(--green-muted)';
+              res.style.color='var(--green)';
+              res.innerHTML='✓ '+updated+' personas actualizadas y guardadas en la nube.';
+              setTimeout(function(){closeUploadModal();}, 2000);
+            }).catch(function(){
+              res.innerHTML='⚠ Actualizados localmente, pero falló la sincronización con la nube.';
+            });
+          } else if(retryCount >= 20){
+            clearInterval(retryInterval);
+            res.style.background='var(--amber-light)';
+            res.style.border='1px solid var(--amber-muted)';
+            res.style.color='var(--amber)';
+            res.innerHTML='⚠ '+updated+' personas actualizadas solo en este dispositivo. Sin conexión a la nube disponible.';
+            setTimeout(function(){closeUploadModal();}, 3500);
+          }
+        }, 500);
       }
 
       // Re-render everything
@@ -5703,11 +5731,18 @@ function markAllEnc(ced, val){
 //  FIREBASE SYNC — Persistent cloud storage
 // ══════════════════════════════════════════════════════════════════
 let _fbReady = false;
-window.addEventListener('fb-ready', function(){
+function _onFbReady(){
+  if(_fbReady) return; // evitar doble ejecución
   _fbReady = true;
   // Load cloud data on startup
   fbLoadAll();
-});
+}
+window.addEventListener('fb-ready', _onFbReady);
+// Fallback: si el módulo ya ejecutó antes de que el listener estuviera listo
+(function _checkFbAlreadyReady(){
+  if(window._fb && !_fbReady){ _onFbReady(); }
+  else if(!window._fb){ setTimeout(_checkFbAlreadyReady, 100); }
+})();
 
 // ── SAVE PHOTO ONLY: push a single user's photo immediately to Firestore.
 //    Devuelve true si quedó guardada en la nube, false si falló.

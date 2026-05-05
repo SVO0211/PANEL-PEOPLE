@@ -5527,13 +5527,11 @@ function applyUploadedData(){
         if(typeof RR_DATA!=='undefined') localStorage.setItem('enc_rr_data', JSON.stringify(RR_DATA));
       } catch(e){ console.warn('localStorage full:', e); }
 
-      // Sync to Firebase (cloud — shared across all devices)
-      // Esperamos a que termine para confirmar al usuario que la nube YA tiene los datos.
-      // Firebase como fuente de verdad — también verificar window._fb por si hubo race condition
+      // Sync to Firebase — también verificar window._fb por si hubo race condition
       const cloudPromises = [];
       const fbNow = (typeof _fbReady!=='undefined' && _fbReady) || (!!window._fb);
       if(fbNow){
-        if(!_fbReady) _fbReady = true;
+        if(!_fbReady) _fbReady = true; // forzar flag si Firebase ya estaba listo
         if(_uploadedVI || _uploadedIC) cloudPromises.push(fbSavePeopleData());
         if(_uploadedRR) cloudPromises.push(fbSaveRRData());
       }
@@ -5712,7 +5710,7 @@ function _onFbReady(){
   fbLoadAll();
 }
 window.addEventListener('fb-ready', _onFbReady);
-// Fallback por si el módulo Firebase ya ejecutó antes de registrar el listener
+// Fallback: si Firebase ya ejecutó antes de que se registrara el listener
 (function _checkFbAlreadyReady(){
   if(window._fb && !_fbReady){ _onFbReady(); }
   else if(!window._fb){ setTimeout(_checkFbAlreadyReady, 80); }
@@ -5967,9 +5965,9 @@ async function fbSaveRRData(){
     const data = RR_DATA||{};
     const keys = Object.keys(data);
     const total = keys.length;
-    const BATCH = 20; // lotes más pequeños para evitar timeout
+    const BATCH = 20; // lotes pequeños para evitar timeout/1MB limit
 
-    // Guardar en lotes con progreso visible
+    // Guardar documentos individuales primero, en lotes con progreso
     for(let i=0; i<keys.length; i+=BATCH){
       const lote = keys.slice(i, i+BATCH).map(function(cc){
         const safeCC = String(cc).replace(/[^a-zA-Z0-9_-]/g,'_');
@@ -5988,12 +5986,12 @@ async function fbSaveRRData(){
       }).filter(Boolean);
       await Promise.all(lote);
       const done = Math.min(i+BATCH, total);
-      if(typeof showToast==='function' && total > 30){
+      if(typeof showToast==='function' && total > 5){
         showToast('☁️ Guardando reportes en ruta... '+done+'/'+total);
       }
     }
 
-    // Índice al final (solo cuando todo lo anterior estuvo OK)
+    // Índice al FINAL — solo cuando TODOS los docs estén OK
     await setDoc(doc(db,'config','rr_data'), {
       keys: keys,
       count: keys.length,
@@ -6002,11 +6000,11 @@ async function fbSaveRRData(){
     });
 
     console.log('[Firebase] RR data guardado: '+total+' personas');
-    if(typeof showToast==='function') showToast('☁️ Reportes en ruta sincronizados ('+total+' personas)');
+    if(typeof showToast==='function') showToast('✅ Reportes en ruta sincronizados ('+total+' personas)');
   } catch(e){
     console.error('[Firebase] Error RRData:', e);
     if(typeof showToast==='function') showToast('⚠ Error sincronizando reportes en ruta: '+(e.message||e));
-    throw e; // re-lanzar para que el caller capture el error
+    throw e;
   }
 }
 

@@ -1643,7 +1643,7 @@ button, .cp-tab, .vi-mon-btn, .ls-tab, .ls-role, .db-kpi,
 <!-- Firebase SDK -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, getDoc, collection, getDocs, onSnapshot }
+  import { getFirestore, doc, setDoc, getDoc, getDocs, collection, onSnapshot, deleteDoc }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
   import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -1663,7 +1663,7 @@ button, .cp-tab, .vi-mon-btn, .ls-tab, .ls-role, .db-kpi,
   const auth = getAuth(app);
 
   // ── Expose to global scope for use in main script ─────────────
-  window._fb = { db, auth, doc, setDoc, getDoc, collection, getDocs,
+  window._fb = { db, auth, doc, setDoc, getDoc, collection, getDocs, deleteDoc,
                  onSnapshot, signInWithEmailAndPassword, onAuthStateChanged, signOut };
 
   // ── Notify main script that Firebase is ready ─────────────────
@@ -3197,7 +3197,30 @@ let paView = 'table'; // 'table' | 'kanban'
 let editingPA = null; // id of activity being edited
 let paEvidencias = []; // temp evidencias for modal
 
-function savePAData(){try{localStorage.setItem('enc_pa',JSON.stringify(PA));}catch(e){}}
+function savePAData(){
+  try{localStorage.setItem('enc_pa',JSON.stringify(PA));}catch(e){
+    // Si localStorage está lleno (pasa con muchas evidencias en base64),
+    // guardamos sin las evidencias localmente — la nube tiene la versión completa.
+    try{
+      const slim = (PA||[]).map(function(a){
+        const c = Object.assign({},a);
+        if(c.evidencias) c.evidencias = c.evidencias.map(function(ev){
+          var stub = {name:ev.name,size:ev.size,type:ev.type};
+          if(ev.uploadedAt) stub.uploadedAt = ev.uploadedAt;
+          stub._cloudOnly = true;
+          return stub;
+        });
+        return c;
+      });
+      localStorage.setItem('enc_pa', JSON.stringify(slim));
+      console.warn('[PA] localStorage lleno: evidencias guardadas solo en la nube');
+    }catch(e2){ console.error('[PA] No se pudo guardar localmente:', e2); }
+  }
+  // Sincronización a la nube — sucede en background
+  if(typeof _fbReady!=='undefined' && _fbReady && typeof fbSavePA==='function'){
+    setTimeout(fbSavePA, 0);
+  }
+}
 function loadPAData(){try{const s=localStorage.getItem('enc_pa');if(s)PA=JSON.parse(s);}catch(e){}}
 loadPAData();
 
@@ -3338,14 +3361,224 @@ document.addEventListener('click',e=>{
   if(sug&&!e.target.closest('#pamo'))sug.style.display='none';
 });
 
-function handleEvidencia(e){
-  const files=Array.from(e.target.files);
-  files.forEach(f=>{paEvidencias.push({name:f.name,size:f.size,type:f.type});});
-  renderEvPreview();
-  e.target.value='';
+// ══════════════════════════════════════════════════════════════════
+//  EVIDENCIAS — Carga real del archivo (Base64) + compresión imágenes
+//  Persiste en Firestore junto con la actividad. Sobrevive recargas
+//  y se sincroniza entre dispositivos.
+// ══════════════════════════════════════════════════════════════════
+const EV_MAX_FILE_KB   = 800;   // máximo por archivo (Firestore doc límite ~1 MB)
+const EV_IMG_MAX_PX    = 1400;  // redimensionar imágenes grandes
+const EV_IMG_QUALITY   = 0.78;  // calidad JPEG inicial
+const EV_TOTAL_MAX_KB  = 850;   // máximo total por actividad
+
+function _evTotalKB(){
+  let total=0;
+  (paEvidencias||[]).forEach(e=>{ if(e && e.data) total += e.data.length; });
+  return Math.round(total/1024);
 }
+
+function _readFileAsDataURL(f){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=ev=>resolve(ev.target.result);
+    r.onerror=()=>reject(new Error('No se pudo leer '+f.name));
+    r.readAsDataURL(f);
+  });
+}
+
+function _compressImage(dataURL){
+  return new Promise(resolve=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width, h=img.height;
+      if(w>EV_IMG_MAX_PX || h>EV_IMG_MAX_PX){
+        const s=EV_IMG_MAX_PX/Math.max(w,h);
+        w=Math.round(w*s); h=Math.round(h*s);
+      }
+      const c=document.createElement('canvas');
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      let q=EV_IMG_QUALITY;
+      let out=c.toDataURL('image/jpeg',q);
+      // Reducir calidad hasta caber en el límite
+      while(out.length > EV_MAX_FILE_KB*1024*1.37 && q>0.25){
+        q-=0.1;
+        out=c.toDataURL('image/jpeg',q);
+      }
+      resolve(out);
+    };
+    img.onerror=()=>resolve(dataURL);
+    img.src=dataURL;
+  });
+}
+
+async function handleEvidencia(e){
+  const files=Array.from(e.target.files);
+  if(!files.length) return;
+  e.target.value=''; // permitir volver a seleccionar el mismo archivo
+
+  const btn=document.querySelector('.ev-upload');
+  if(btn) btn.style.opacity='.55';
+
+  for(const f of files){
+    try{
+      let data = await _readFileAsDataURL(f);
+      let finalName = f.name;
+      let finalType = f.type || 'application/octet-stream';
+
+      // Comprimir imágenes
+      if(f.type && f.type.startsWith('image/')){
+        const before = data.length;
+        data = await _compressImage(data);
+        finalType = 'image/jpeg';
+        // si era PNG/HEIC y comprimimos, ajustamos extensión visible
+        if(/\.(png|heic|heif|webp|bmp)$/i.test(finalName)){
+          finalName = finalName.replace(/\.[^.]+$/, '.jpg');
+        }
+        console.log('[Evidencia] '+f.name+': '+Math.round(before/1024)+'KB → '+Math.round(data.length/1024)+'KB');
+      }
+
+      // Validar tamaño individual
+      const kb = Math.round(data.length/1024);
+      if(kb > EV_MAX_FILE_KB){
+        showToast('⚠ "'+f.name+'" es muy grande ('+kb+' KB). Máx '+EV_MAX_FILE_KB+' KB. Comprime el archivo y reinténtalo.');
+        continue;
+      }
+
+      // Validar total acumulado
+      if(_evTotalKB() + kb > EV_TOTAL_MAX_KB){
+        showToast('⚠ Excede el límite total de evidencias ('+EV_TOTAL_MAX_KB+' KB) por actividad. Elimina alguna o crea otra actividad.');
+        continue;
+      }
+
+      paEvidencias.push({
+        name: finalName,
+        size: f.size,
+        type: finalType,
+        data: data,                  // Base64 dataURL — esto es lo que se persiste
+        uploadedAt: new Date().toISOString()
+      });
+    }catch(err){
+      console.error('[Evidencia] Error con '+f.name+':',err);
+      showToast('⚠ No se pudo cargar '+f.name);
+    }
+  }
+
+  if(btn) btn.style.opacity='';
+  renderEvPreview();
+}
+
 function renderEvPreview(){
-  document.getElementById('pa-ev-preview').innerHTML=paEvidencias.map((ev,i)=>`<div class="ev-item">📎 ${ev.name}<button onclick="paEvidencias.splice(${i},1);renderEvPreview()">×</button></div>`).join('');
+  const cont=document.getElementById('pa-ev-preview');
+  if(!cont) return;
+  if(!paEvidencias.length){ cont.innerHTML=''; return; }
+  cont.innerHTML = paEvidencias.map((ev,i)=>{
+    const hasData = !!ev.data;
+    const kb = ev.data ? Math.round(ev.data.length/1024) : Math.round((ev.size||0)/1024);
+    const isImg = ev.type && ev.type.startsWith('image/');
+    const thumb = (hasData && isImg)
+      ? `<img src="${ev.data}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:6px;margin-right:.4rem;vertical-align:middle">`
+      : `<span style="margin-right:.35rem">📎</span>`;
+    const viewBtn = hasData
+      ? `<button onclick="viewEvidencia(${i})" title="Ver / descargar" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:.85rem;margin-right:.25rem">⬇</button>`
+      : `<span title="Evidencia legacy (sin contenido)" style="color:var(--rd);font-size:.7rem;margin-right:.25rem">⚠</span>`;
+    return `<div class="ev-item" style="display:inline-flex;align-items:center;background:var(--surface3);padding:.3rem .55rem;border-radius:8px;margin:.2rem;font-size:.78rem">
+      ${thumb}<span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ev.name}</span>
+      <span style="color:var(--mu);font-size:.68rem;margin:0 .4rem">${kb} KB</span>
+      ${viewBtn}
+      <button onclick="paEvidencias.splice(${i},1);renderEvPreview()" title="Eliminar" style="background:none;border:none;cursor:pointer;color:var(--rd);font-weight:600">×</button>
+    </div>`;
+  }).join('');
+  // Indicador de uso total
+  const totalKB=_evTotalKB();
+  if(totalKB>0){
+    cont.innerHTML += `<div style="width:100%;font-size:.68rem;color:var(--mu);margin-top:.35rem;font-family:var(--mo)">Total: ${totalKB} / ${EV_TOTAL_MAX_KB} KB</div>`;
+  }
+}
+
+// Ver / descargar una evidencia ya guardada
+function viewEvidencia(i){
+  const ev = paEvidencias[i];
+  if(!ev || !ev.data){ showToast('Esta evidencia no tiene archivo asociado'); return; }
+  // Abrir en pestaña nueva si es imagen o PDF; descargar si es otro tipo
+  if(ev.type && (ev.type.startsWith('image/') || ev.type==='application/pdf')){
+    const w = window.open();
+    if(w){
+      w.document.write(`<title>${ev.name}</title><body style="margin:0;background:#0a0e1a;display:flex;align-items:center;justify-content:center;min-height:100vh">${
+        ev.type.startsWith('image/')
+          ? `<img src="${ev.data}" style="max-width:100%;max-height:100vh">`
+          : `<embed src="${ev.data}" type="application/pdf" style="width:100%;height:100vh">`
+      }</body>`);
+    }
+  } else {
+    // Descargar
+    const a=document.createElement('a');
+    a.href=ev.data; a.download=ev.name; a.click();
+  }
+}
+
+// Popup para listar y abrir las evidencias de una actividad desde la tabla
+function showEvidenciasMenu(ev, actId){
+  ev.stopPropagation();
+  // Cerrar cualquier menú previo
+  document.querySelectorAll('.ev-popup').forEach(x=>x.remove());
+  const a = (typeof PA!=='undefined') ? PA.find(x=>x.id===actId) : null;
+  if(!a || !a.evidencias || !a.evidencias.length) return;
+
+  const rect = ev.target.getBoundingClientRect();
+  const pop = document.createElement('div');
+  pop.className='ev-popup';
+  pop.style.cssText=`position:fixed;top:${rect.bottom+6}px;left:${Math.max(8,rect.left-120)}px;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    box-shadow:var(--shadow-md);padding:.4rem;z-index:9999;min-width:240px;max-width:340px`;
+
+  pop.innerHTML = `<div style="font-size:.65rem;color:var(--mu);padding:.2rem .4rem;border-bottom:1px solid var(--border);margin-bottom:.3rem;font-family:var(--mo);text-transform:uppercase;letter-spacing:.05em">Evidencias (${a.evidencias.length})</div>` +
+    a.evidencias.map((e,i)=>{
+      const hasData = !!e.data;
+      const isImg = e.type && e.type.startsWith('image/');
+      const icon = !hasData ? '⚠'
+                 : isImg ? '🖼'
+                 : (e.type==='application/pdf') ? '📄'
+                 : '📎';
+      const kb = e.data ? Math.round(e.data.length/1024) : Math.round((e.size||0)/1024);
+      return `<div onclick="${hasData?`viewEvidenciaFromActivity('${actId}',${i});document.querySelectorAll('.ev-popup').forEach(x=>x.remove())`:'showToast(\'Evidencia antigua sin archivo\')'}" 
+        style="display:flex;align-items:center;gap:.5rem;padding:.45rem .55rem;border-radius:6px;cursor:pointer;font-size:.78rem;${hasData?'':'opacity:.55'}"
+        onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background=''">
+        <span style="font-size:1rem">${icon}</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.name||'(sin nombre)'}</span>
+        <span style="color:var(--mu);font-size:.65rem;font-family:var(--mo)">${kb} KB</span>
+      </div>`;
+    }).join('');
+
+  document.body.appendChild(pop);
+  // Cerrar al hacer click fuera
+  setTimeout(()=>{
+    const close=(e)=>{
+      if(!pop.contains(e.target)){ pop.remove(); document.removeEventListener('click',close); }
+    };
+    document.addEventListener('click',close);
+  },10);
+}
+
+// Ver evidencia desde la fila de la tabla (cuando el modal NO está abierto)
+function viewEvidenciaFromActivity(actId, idx){
+  const a = (typeof PA!=='undefined') ? PA.find(x=>x.id===actId) : null;
+  if(!a || !a.evidencias || !a.evidencias[idx]){ showToast('Evidencia no encontrada'); return; }
+  const ev = a.evidencias[idx];
+  if(!ev.data){ showToast('Esta evidencia no tiene archivo (registro antiguo)'); return; }
+  if(ev.type && (ev.type.startsWith('image/') || ev.type==='application/pdf')){
+    const w = window.open();
+    if(w){
+      w.document.write(`<title>${ev.name}</title><body style="margin:0;background:#0a0e1a;display:flex;align-items:center;justify-content:center;min-height:100vh">${
+        ev.type.startsWith('image/')
+          ? `<img src="${ev.data}" style="max-width:100%;max-height:100vh">`
+          : `<embed src="${ev.data}" type="application/pdf" style="width:100%;height:100vh">`
+      }</body>`);
+    }
+  } else {
+    const a2=document.createElement('a');
+    a2.href=ev.data; a2.download=ev.name; a2.click();
+  }
 }
 
 
@@ -3780,7 +4013,7 @@ function renderTable(fil, el){
     const av = parseInt(a.avance)||0;
     const late = isLate(a);
     const evHTML = a.evidencias&&a.evidencias.length
-      ? `<span class="ev-chip" title="${a.evidencias.map(e=>e.name).join(', ')}">📎 ${a.evidencias.length}</span>`
+      ? `<span class="ev-chip" onclick="showEvidenciasMenu(event,'${a.id}')" title="Ver evidencias" style="cursor:pointer">📎 ${a.evidencias.length}</span>`
       : `<span class="no-ev">—</span>`;
     const actions = isA ? `<div class="pa-row-actions">
       <button class="pa-row-btn" onclick="openPAModal('${a.id}')">✎ Editar</button>
@@ -5576,12 +5809,51 @@ async function fbSave(){
 }
 
 // ── SAVE PA ────────────────────────────────────────────────────
+// Cada actividad va en su propio documento dentro de la colección
+// "plan_accion_items". Así cada actividad puede llevar evidencias
+// en Base64 sin chocar con el límite de 1 MB por documento de Firestore.
+// El doc "config/plan_accion" se mantiene como índice (lista de IDs)
+// para compatibilidad y para detectar borrados.
 async function fbSavePA(){
   if(!_fbReady || !window._fb) return;
   try{
-    const {db, doc, setDoc} = window._fb;
-    await setDoc(doc(db,'config','plan_accion'), {items: PA, updatedAt: new Date().toISOString()});
-    console.log('[Firebase] Plan de acción guardado');
+    const {db, doc, setDoc, collection, getDocs, deleteDoc} = window._fb;
+
+    // 1) Guardar cada actividad como documento individual
+    const writes = (PA||[]).map(function(a){
+      // Asegurar id estable
+      if(!a.id) a.id = 'pa_' + Date.now() + '_' + Math.random().toString(36).slice(2,8);
+      const safeId = String(a.id).replace(/[^a-zA-Z0-9_-]/g,'_');
+      return setDoc(doc(db,'plan_accion_items', safeId), Object.assign({}, a, {
+        updatedAt: new Date().toISOString()
+      }));
+    });
+    await Promise.all(writes);
+
+    // 2) Actualizar índice (lista de IDs activos) para detectar borrados
+    const activeIds = (PA||[]).map(function(a){return String(a.id);});
+    await setDoc(doc(db,'config','plan_accion'), {
+      ids: activeIds,
+      count: activeIds.length,
+      updatedAt: new Date().toISOString()
+    });
+
+    // 3) Borrar documentos huérfanos (actividades eliminadas localmente)
+    try{
+      const snap = await getDocs(collection(db,'plan_accion_items'));
+      const orphans = [];
+      snap.forEach(function(s){
+        if(activeIds.indexOf(s.id) === -1) orphans.push(s.id);
+      });
+      if(orphans.length && deleteDoc){
+        await Promise.all(orphans.map(function(id){
+          return deleteDoc(doc(db,'plan_accion_items', id));
+        }));
+        console.log('[Firebase] Limpieza PA:', orphans.length, 'huérfanos eliminados');
+      }
+    }catch(_){ /* deleteDoc no exportado en versión vieja - ignorar */ }
+
+    console.log('[Firebase] Plan de acción guardado ('+activeIds.length+' actividades)');
   } catch(e){ console.error('[Firebase] Error PA:', e); }
 }
 
@@ -5668,10 +5940,42 @@ async function fbLoadAll(){
       }
     });
     
-    // Load PA
-    const paDoc = await getDoc(doc(db,'config','plan_accion'));
-    if(paDoc.exists() && paDoc.data().items){
-      PA = paDoc.data().items;
+    // Load PA — primero intenta colección nueva (con evidencias Base64),
+    // luego fallback al doc viejo "config/plan_accion.items"
+    try{
+      const itemsSnap = await getDocs(collection(db,'plan_accion_items'));
+      if(!itemsSnap.empty){
+        const loadedPA = [];
+        itemsSnap.forEach(function(s){
+          const d = s.data();
+          // Eliminar campo updatedAt agregado por fbSavePA antes de poner en estado local
+          const clean = Object.assign({}, d);
+          delete clean.updatedAt;
+          loadedPA.push(clean);
+        });
+        // Ordenar por fecha de creación si existe id con timestamp
+        loadedPA.sort(function(a,b){
+          return String(a.id||'').localeCompare(String(b.id||''));
+        });
+        PA = loadedPA;
+        console.log('[Firebase] PA cargado desde colección:', PA.length, 'actividades');
+      } else {
+        // Fallback al formato anterior
+        const paDoc = await getDoc(doc(db,'config','plan_accion'));
+        if(paDoc.exists() && paDoc.data().items){
+          PA = paDoc.data().items;
+          console.log('[Firebase] PA cargado desde doc legacy');
+          // Migrar al nuevo formato en próximo guardado
+          if(PA.length) setTimeout(function(){ fbSavePA(); }, 1500);
+        }
+      }
+    }catch(paErr){
+      console.error('[Firebase] Error cargando PA:', paErr);
+      // Último intento con el formato legacy
+      try{
+        const paDoc = await getDoc(doc(db,'config','plan_accion'));
+        if(paDoc.exists() && paDoc.data().items) PA = paDoc.data().items;
+      }catch(_){}
     }
 
     // Load Surveys

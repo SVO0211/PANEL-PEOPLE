@@ -5521,20 +5521,22 @@ function applyUploadedData(){
           updated++;
         });
       }
-      // Sync to Firebase (cloud — shared across all devices)
-      // Firebase es la fuente de verdad. localStorage solo como caché secundario.
-      const cloudPromises = [];
-      const fbReady = (typeof _fbReady!=='undefined' && _fbReady) || (window._fb != null);
-      if(fbReady){
-        if(!_fbReady){ _fbReady = true; } // asegurar flag
-        if(_uploadedVI || _uploadedIC) cloudPromises.push(fbSavePeopleData());
-        if(_uploadedRR) cloudPromises.push(fbSaveRRData());
-      }
-      // Guardar en localStorage SOLO como caché local (no como fuente primaria)
+      // Save to localStorage for persistence (cache offline)
       try{
         localStorage.setItem('enc_people_data', JSON.stringify(PEOPLE_DATA));
         if(typeof RR_DATA!=='undefined') localStorage.setItem('enc_rr_data', JSON.stringify(RR_DATA));
       } catch(e){ console.warn('localStorage full:', e); }
+
+      // Sync to Firebase (cloud — shared across all devices)
+      // Esperamos a que termine para confirmar al usuario que la nube YA tiene los datos.
+      // Firebase como fuente de verdad — también verificar window._fb por si hubo race condition
+      const cloudPromises = [];
+      const fbNow = (typeof _fbReady!=='undefined' && _fbReady) || (!!window._fb);
+      if(fbNow){
+        if(!_fbReady) _fbReady = true;
+        if(_uploadedVI || _uploadedIC) cloudPromises.push(fbSavePeopleData());
+        if(_uploadedRR) cloudPromises.push(fbSaveRRData());
+      }
 
       const res = document.getElementById('upload-result');
       res.style.display='block';
@@ -5561,40 +5563,13 @@ function applyUploadedData(){
           res.innerHTML='⚠ Datos guardados localmente, pero falló la sincronización con la nube. Detalle: '+(err && err.message ? err.message : 'error desconocido')+'. Los datos NO estarán disponibles en otros dispositivos hasta que se sincronicen.';
         });
       } else {
-        // Firebase aún no listo — intentar guardar cuando esté disponible
+        // Sin Firebase — solo local
         document.getElementById('upload-loading').style.display='none';
         res.style.background='var(--amber-light)';
         res.style.border='1px solid var(--amber-muted)';
         res.style.color='var(--amber)';
-        res.innerHTML='⏳ '+updated+' personas actualizadas. Esperando conexión a la nube...';
-        // Reintentar hasta 10 segundos
-        var retryCount = 0;
-        var retryInterval = setInterval(function(){
-          retryCount++;
-          if((typeof _fbReady!=='undefined'&&_fbReady) || window._fb){
-            if(!_fbReady) _fbReady = true;
-            clearInterval(retryInterval);
-            var retryPromises = [];
-            if(_uploadedVI || _uploadedIC) retryPromises.push(fbSavePeopleData());
-            if(_uploadedRR) retryPromises.push(fbSaveRRData());
-            Promise.all(retryPromises).then(function(){
-              res.style.background='var(--green-light)';
-              res.style.border='1px solid var(--green-muted)';
-              res.style.color='var(--green)';
-              res.innerHTML='✓ '+updated+' personas actualizadas y guardadas en la nube.';
-              setTimeout(function(){closeUploadModal();}, 2000);
-            }).catch(function(){
-              res.innerHTML='⚠ Actualizados localmente, pero falló la sincronización con la nube.';
-            });
-          } else if(retryCount >= 20){
-            clearInterval(retryInterval);
-            res.style.background='var(--amber-light)';
-            res.style.border='1px solid var(--amber-muted)';
-            res.style.color='var(--amber)';
-            res.innerHTML='⚠ '+updated+' personas actualizadas solo en este dispositivo. Sin conexión a la nube disponible.';
-            setTimeout(function(){closeUploadModal();}, 3500);
-          }
-        }, 500);
+        res.innerHTML='⚠ '+updated+' personas actualizadas solo en este dispositivo (sin conexión a la nube). Los datos NO se verán en otros dispositivos.';
+        setTimeout(function(){closeUploadModal();}, 3500);
       }
 
       // Re-render everything
@@ -5732,16 +5707,15 @@ function markAllEnc(ced, val){
 // ══════════════════════════════════════════════════════════════════
 let _fbReady = false;
 function _onFbReady(){
-  if(_fbReady) return; // evitar doble ejecución
+  if(_fbReady) return;
   _fbReady = true;
-  // Load cloud data on startup
   fbLoadAll();
 }
 window.addEventListener('fb-ready', _onFbReady);
-// Fallback: si el módulo ya ejecutó antes de que el listener estuviera listo
+// Fallback por si el módulo Firebase ya ejecutó antes de registrar el listener
 (function _checkFbAlreadyReady(){
   if(window._fb && !_fbReady){ _onFbReady(); }
-  else if(!window._fb){ setTimeout(_checkFbAlreadyReady, 100); }
+  else if(!window._fb){ setTimeout(_checkFbAlreadyReady, 80); }
 })();
 
 // ── SAVE PHOTO ONLY: push a single user's photo immediately to Firestore.
@@ -5989,39 +5963,50 @@ async function fbSaveRRData(){
   if(!_fbReady || !window._fb) return;
   try{
     const {db, doc, setDoc} = window._fb;
-    const tasks = [];
     const updatedAt = new Date().toISOString();
     const data = RR_DATA||{};
+    const keys = Object.keys(data);
+    const total = keys.length;
+    const BATCH = 20; // lotes más pequeños para evitar timeout
 
-    Object.keys(data).forEach(function(cc){
-      const safeCC = String(cc).replace(/[^a-zA-Z0-9_-]/g,'_');
-      if(!safeCC) return;
-      const item = data[cc];
-      tasks.push(setDoc(doc(db,'rr_items', safeCC), {
-        cc: String(cc),
-        t:  item.t || (Array.isArray(item)?item.length:0),
-        m:  item.m || [],
-        i:  item.i || (Array.isArray(item)?item:[]),
-        updatedAt: updatedAt
-      }));
-    });
+    // Guardar en lotes con progreso visible
+    for(let i=0; i<keys.length; i+=BATCH){
+      const lote = keys.slice(i, i+BATCH).map(function(cc){
+        const safeCC = String(cc).replace(/[^a-zA-Z0-9_-]/g,'_');
+        if(!safeCC) return null;
+        const item = data[cc];
+        // Limitar a últimos 60 registros para no superar 1MB por doc de Firestore
+        const rawItems = item.i || (Array.isArray(item)?item:[]);
+        const trimmedItems = rawItems.length > 60 ? rawItems.slice(rawItems.length - 60) : rawItems;
+        return setDoc(doc(db,'rr_items', safeCC), {
+          cc: String(cc),
+          t:  item.t || rawItems.length,
+          m:  item.m || [],
+          i:  trimmedItems,
+          updatedAt: updatedAt
+        });
+      }).filter(Boolean);
+      await Promise.all(lote);
+      const done = Math.min(i+BATCH, total);
+      if(typeof showToast==='function' && total > 30){
+        showToast('☁️ Guardando reportes en ruta... '+done+'/'+total);
+      }
+    }
 
-    // Índice
-    tasks.push(setDoc(doc(db,'config','rr_data'), {
-      keys: Object.keys(data),
-      count: Object.keys(data).length,
+    // Índice al final (solo cuando todo lo anterior estuvo OK)
+    await setDoc(doc(db,'config','rr_data'), {
+      keys: keys,
+      count: keys.length,
       updatedAt: updatedAt,
       version: 2
-    }));
+    });
 
-    const BATCH = 50;
-    for(let i=0; i<tasks.length; i+=BATCH){
-      await Promise.all(tasks.slice(i, i+BATCH));
-    }
-    console.log('[Firebase] RR data guardado: '+tasks.length+' documentos');
+    console.log('[Firebase] RR data guardado: '+total+' personas');
+    if(typeof showToast==='function') showToast('☁️ Reportes en ruta sincronizados ('+total+' personas)');
   } catch(e){
     console.error('[Firebase] Error RRData:', e);
-    if(typeof showToast==='function') showToast('⚠ Error sincronizando reportes en ruta — guardado solo local');
+    if(typeof showToast==='function') showToast('⚠ Error sincronizando reportes en ruta: '+(e.message||e));
+    throw e; // re-lanzar para que el caller capture el error
   }
 }
 

@@ -2488,6 +2488,26 @@ function editPhotoChange(e){
       const mav=document.getElementById('mav-preview');
       mav.innerHTML=`<img src="${b64}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
       console.log('[Photo] Comprimida:',Math.round(b64.length/1024),'KB (calidad',q.toFixed(2)+')');
+
+      // ── PERSISTENCIA INMEDIATA: si ya hay un usuario en edición, guardamos
+      //    la foto en su registro y forzamos sync con Firestore para que la
+      //    foto sobreviva refrescos y se vea en cualquier dispositivo.
+      try{
+        if(typeof editCed!=='undefined' && editCed && editCed!=='__new__'){
+          const u = DATA.find(x=>x.cedula===editCed);
+          if(u){
+            u.photo = b64;
+            // Save local + push a Firestore (con feedback al usuario)
+            save();
+            if(typeof _fbReady!=='undefined' && _fbReady && typeof fbSavePhotoOnly==='function'){
+              fbSavePhotoOnly(u).then(ok=>{
+                if(ok) showToast('☁️ Foto sincronizada en la nube');
+                else showToast('⚠ Foto guardada localmente (revisa conexión)');
+              });
+            }
+          }
+        }
+      }catch(err){console.error('[Photo] persist error:',err);}
     };
     img.src=ev.target.result;
   };
@@ -2793,6 +2813,13 @@ function closePDF(){
   document.getElementById('pdfview').style.display='none';
   if(role==='admin'){
     document.getElementById('app').style.display='block';
+  } else if(role==='team'){
+    // Volver a la tarjeta personal del usuario, no al panel admin.
+    if(typeof _teamUser!=='undefined' && _teamUser && typeof openTeamView==='function'){
+      openTeamView();
+    } else {
+      hideAllViews();
+    }
   } else {
     hideAllViews();
   }
@@ -2909,8 +2936,10 @@ function showView(id){
     if(pv){pv.style.display='flex';pv.classList.add('open');}
     return;
   }
-  // For other full-page views: hide everything and show target
-  ['app','pdfview','encview','surveyview','paview','padview','indview'].forEach(v=>{
+  // For other full-page views: hide everything and show target.
+  // OJO: incluimos #teamview en la lista para que no se quede montado por
+  // encima/por debajo del view destino cuando el usuario está en modo "team".
+  ['app','pdfview','encview','surveyview','paview','padview','indview','teamview'].forEach(v=>{
     const el=document.getElementById(v);
     if(el){el.style.display='none';if(el.classList)el.classList.remove('open');}
   });
@@ -2918,9 +2947,21 @@ function showView(id){
   if(target){target.style.display='block';target.classList.add('open');}
 }
 function hideAllViews(){
+  // TEAM MODE: el usuario solo debe volver a su tarjeta personal,
+  // nunca al panel #app (que es del admin) ni al dashboard.
+  if(typeof role!=='undefined' && role==='team'){
+    ['app','pdfview','encview','surveyview','paview','padview','indview'].forEach(v=>{
+      const el=document.getElementById(v);
+      if(el){el.style.display='none';el.classList.remove('open');}
+    });
+    if(typeof _teamUser!=='undefined' && _teamUser){
+      if(typeof openTeamView==='function') openTeamView();
+    }
+    return;
+  }
   // Viewer always returns to the dashboard, never to the card panel
   if(role==='viewer'){
-    ['pdfview','encview','surveyview','paview','padview'].forEach(v=>{
+    ['pdfview','encview','surveyview','paview','padview','teamview'].forEach(v=>{
       const el=document.getElementById(v);
       if(el){el.style.display='none';el.classList.remove('open');}
     });
@@ -2932,7 +2973,7 @@ function hideAllViews(){
     if(appEl)appEl.style.display='none';
     return;
   }
-  ['pdfview','encview','surveyview','paview','padview','indview'].forEach(v=>{
+  ['pdfview','encview','surveyview','paview','padview','indview','teamview'].forEach(v=>{
     const el=document.getElementById(v);
     if(el){el.style.display='none';el.classList.remove('open');}
   });
@@ -4662,6 +4703,18 @@ function lsLoginTeam(){
   // Hide login, show ONLY the team view (never #app)
   document.getElementById('ls').style.display = 'none';
   openTeamView();
+
+  // Traer la foto/datos más recientes de Firestore para esta cédula concreta
+  // (sirve para que en un dispositivo nuevo se vea la foto en el primer render
+  // sin tener que esperar al getDocs() global de fbLoadAll).
+  if(typeof fbLoadOne==='function' && _teamUser && _teamUser.cedula){
+    fbLoadOne(_teamUser.cedula).then(function(fresh){
+      if(fresh){
+        _teamUser = fresh;
+        if(typeof openTeamView==='function') openTeamView();
+      }
+    }).catch(function(e){ console.error('[Login] fbLoadOne error:',e); });
+  }
 }
 
 function lsLoginViewer(){
@@ -5395,6 +5448,78 @@ window.addEventListener('fb-ready', function(){
   // Load cloud data on startup
   fbLoadAll();
 });
+
+// ── SAVE PHOTO ONLY: push a single user's photo immediately to Firestore.
+//    Devuelve true si quedó guardada en la nube, false si falló.
+//    Esto se usa después de que el usuario sube una foto desde el modal,
+//    para que la foto sobreviva refrescos y se vea en cualquier dispositivo.
+async function fbSavePhotoOnly(u){
+  if(!_fbReady || !window._fb || !u || !u.cedula) return false;
+  try{
+    const {db, doc, setDoc} = window._fb;
+    const photoSave = (u.photo && (u.photo.startsWith('http') || u.photo.length < 250000)) ? u.photo : '';
+    await setDoc(doc(db,'colaboradores', String(u.cedula)), {
+      cedula: u.cedula,
+      photo:  photoSave,
+      updatedAt: new Date().toISOString()
+    }, {merge:true});
+    console.log('[Firebase] Foto sincronizada para cédula', u.cedula, '('+Math.round((photoSave||'').length/1024)+' KB)');
+    return true;
+  }catch(e){
+    console.error('[Firebase] Error guardando foto:', e);
+    return false;
+  }
+}
+
+// ── LOAD ONE: traer el documento más reciente de Firestore para una sola
+//    cédula y aplicarlo al usuario en memoria. Útil al iniciar sesión por
+//    cédula desde un dispositivo nuevo, para que la foto aparezca en el
+//    primer render sin tener que esperar al getDocs() global.
+async function fbLoadOne(cedula){
+  if(!_fbReady || !window._fb || !cedula) return null;
+  try{
+    const {db, doc, getDoc} = window._fb;
+    const snap = await getDoc(doc(db,'colaboradores', String(cedula)));
+    if(!snap.exists()) return null;
+    const d = snap.data();
+    const u = DATA.find(x => String(x.cedula) === String(cedula));
+    if(u){
+      var surveyUpdate = {};
+      if(typeof SURVEYS!=='undefined'){
+        SURVEYS.forEach(function(sv){ if(d[sv.id]!==undefined) surveyUpdate[sv.id]=d[sv.id]; });
+      }
+      Object.assign(u, {
+        satisfaccion: d.satisfaccion||u.satisfaccion,
+        principios:   d.principios||u.principios,
+        gemba:        d.gemba||u.gemba,
+        buzon:        d.buzon||u.buzon,
+        engagement:   d.engagement||u.engagement,
+        seg_psico:    d.seg_psico||u.seg_psico,
+        pct:          d.pct!==undefined?d.pct:u.pct,
+        corridas:     d.corridas!==undefined?d.corridas:u.corridas,
+        pendientes:   d.pendientes!==undefined?d.pendientes:u.pendientes,
+        detalle:      d.detalle||u.detalle,
+        phone:        d.phone||u.phone,
+        photo:        d.photo ? d.photo : (u.photo||''),
+        tags:         d.tags||u.tags,
+        edad:         d.edad||u.edad,
+        ingreso:      d.ingreso||u.ingreso,
+        skap:         d.skap||u.skap,
+        cualidades:   d.cualidades||u.cualidades,
+        rol:          d.rol||u.rol,
+        padrinoCed:   d.padrinoCed||u.padrinoCed,
+        bloqueado:    d.bloqueado!==undefined?d.bloqueado:(u.bloqueado||u.blocked||false),
+        bloqueadoRazon: d.bloqueadoRazon||u.bloqueadoRazon||u.blockReason||''
+      }, surveyUpdate);
+      console.log('[Firebase] Cédula', cedula, 'cargada — foto:', u.photo?'sí':'no');
+      return u;
+    }
+    return null;
+  }catch(e){
+    console.error('[Firebase] Error fbLoadOne:', e);
+    return null;
+  }
+}
 
 // ── SAVE: Push all DATA (collaborator states) to Firestore ────────
 // Fotos se guardan como base64 comprimido (<200KB) directamente en Firestore.

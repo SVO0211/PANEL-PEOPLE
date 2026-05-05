@@ -2397,18 +2397,22 @@ const RR_DATA={"92516371":[{"m":"Ene","c":"Gran dispersión de los clientes","s"
 
 function save(){
   try{
-    const toSave=DATA.map(u=>({
-      cedula:u.cedula,nombre:u.nombre,cargo:u.cargo,qr:u.qr||'—',
-      satisfaccion:u.satisfaccion,principios:u.principios,gemba:u.gemba,
-      buzon:u.buzon,engagement:u.engagement,seg_psico:u.seg_psico,
-      corridas:u.corridas,pendientes:u.pendientes,pct:u.pct,detalle:u.detalle,
-      phone:u.phone||'',photo:u.photo||'',tags:u.tags||[],
-      edad:u.edad||'',ingreso:u.ingreso||'',skap:u.skap||'',
-      cualidades:u.cualidades||[],rol:u.rol||'',padrinoCed:u.padrinoCed||'',
-      bloqueado:u.bloqueado||u.blocked||false,
-      bloqueadoRazon:u.bloqueadoRazon||u.blockReason||'',
-      _custom:String(u.cedula).startsWith('NEW_')
-    }));
+    const toSave=DATA.map(u=>{
+      var svSnap={};
+      if(typeof SURVEYS!=='undefined') SURVEYS.forEach(function(sv){svSnap[sv.id]=u[sv.id]||'⚪';});
+      return Object.assign({
+        cedula:u.cedula,nombre:u.nombre,cargo:u.cargo,qr:u.qr||'—',
+        satisfaccion:u.satisfaccion,principios:u.principios,gemba:u.gemba,
+        buzon:u.buzon,engagement:u.engagement,seg_psico:u.seg_psico,
+        corridas:u.corridas,pendientes:u.pendientes,pct:u.pct,detalle:u.detalle,
+        phone:u.phone||'',photo:u.photo||'',tags:u.tags||[],
+        edad:u.edad||'',ingreso:u.ingreso||'',skap:u.skap||'',
+        cualidades:u.cualidades||[],rol:u.rol||'',padrinoCed:u.padrinoCed||'',
+        bloqueado:u.bloqueado||u.blocked||false,
+        bloqueadoRazon:u.bloqueadoRazon||u.blockReason||'',
+        _custom:String(u.cedula).startsWith('NEW_')
+      },svSnap);
+    });
     localStorage.setItem('enc_v5',JSON.stringify(toSave));
   }catch(e){}
   // Firebase sync
@@ -2423,11 +2427,13 @@ function load(){
     DATA=DATA.map(u=>{
       const f=sv.find(x=>x.cedula===u.cedula);
       if(!f)return u;
-      return{...u,phone:f.phone||'',photo:f.photo||'',tags:f.tags||[],
+      var svRestore={};
+      if(typeof SURVEYS!=='undefined') SURVEYS.forEach(function(sv2){if(f[sv2.id]!==undefined)svRestore[sv2.id]=f[sv2.id];});
+      return Object.assign({},u,{phone:f.phone||'',photo:f.photo||'',tags:f.tags||[],
         edad:f.edad||'',ingreso:f.ingreso||'',skap:f.skap||'',
         cualidades:f.cualidades||[],rol:f.rol||'',padrinoCed:f.padrinoCed||'',
         bloqueado:f.bloqueado||f.blocked||false,
-        bloqueadoRazon:f.bloqueadoRazon||f.blockReason||''};
+        bloqueadoRazon:f.bloqueadoRazon||f.blockReason||''},svRestore);
     });
     // Restore manually created (NEW_) cards
     sv.filter(f=>f._custom&&!DATA.find(u=>u.cedula===f.cedula)).forEach(f=>{
@@ -2460,13 +2466,32 @@ function waOk(u){return !!u.nombre;}
 
 // EDIT MODAL
 function editPhotoChange(e){
-  const f=e.target.files[0];if(!f)return;
+  const f=e.target.files[0]; if(!f)return;
   const r=new FileReader();
   r.onload=ev=>{
-    editPhotoB64=ev.target.result;
-    const mav=document.getElementById('mav-preview');
-    mav.innerHTML=`<img src="${editPhotoB64}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-  };r.readAsDataURL(f);
+    // Compress image using canvas to keep base64 under 200KB for Firestore
+    const img=new Image();
+    img.onload=function(){
+      const MAX=200; // max size in pixels (longest edge)
+      const TARGET_KB=150; // target size ~150KB base64
+      var w=img.width, h=img.height;
+      // Scale down if larger than MAX
+      if(w>MAX||h>MAX){ const s=MAX/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      // Try quality 0.7 first, then reduce if still too large
+      var q=0.75;
+      var b64=canvas.toDataURL('image/jpeg',q);
+      while(b64.length>TARGET_KB*1024*1.37 && q>0.2){ q-=0.1; b64=canvas.toDataURL('image/jpeg',q); }
+      editPhotoB64=b64;
+      const mav=document.getElementById('mav-preview');
+      mav.innerHTML=`<img src="${b64}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+      console.log('[Photo] Comprimida:',Math.round(b64.length/1024),'KB (calidad',q.toFixed(2)+')');
+    };
+    img.src=ev.target.result;
+  };
+  r.readAsDataURL(f);
 }
 function renderQs(qs){
   document.getElementById('qlist').innerHTML=(qs||[]).map((q,i)=>`<div class="qitem" style="grid-template-columns:auto 1fr auto">
@@ -2783,10 +2808,10 @@ function render(){
     if(iv){iv.style.display='block';iv.classList.add('open');}
     return;
   }
-  // TEAM MODE: only show logged-in user's own card via teamview (NOT in #main to avoid duplicate IDs)
+  // TEAM MODE: only show logged-in user's own card
   if(role==='team'&&_teamUser){
     const m2=document.getElementById('main');
-    if(m2) m2.innerHTML=''; // Keep #main empty to avoid duplicate card IDs with teamview
+    if(m2) m2.innerHTML='<div class="cards">'+cardHTML(_teamUser)+'</div>';
     const sc2=document.getElementById('sc2'); if(sc2) sc2.textContent=1;
     const sgc=document.getElementById('sgc'); if(sgc) sgc.textContent=1;
     const tc=document.getElementById('tc'); if(tc) tc.textContent=DATA.length;
@@ -3223,6 +3248,42 @@ function fmtDate(d){if(!d)return'—';const dt=new Date(d+'T12:00:00');return dt
 // ── modal ────────────────────────────────────────────
 function closePAModal(){document.getElementById('pamo').classList.remove('open');editingPA=null;paEvidencias=[];}
 
+// ── GUARDAR ACTIVIDAD DEL PLAN DE ACCIÓN ─────────────────────────
+function savePAActivity(){
+  var actividad = (document.getElementById('pa-actividad')&&document.getElementById('pa-actividad').value||'').trim();
+  if(!actividad){ alert('La actividad es obligatoria.'); return; }
+  var responsable   = (document.getElementById('pa-resp')&&document.getElementById('pa-resp').value||'').trim();
+  var persona       = (document.getElementById('pa-persona')&&document.getElementById('pa-persona').value||'').trim();
+  var fecha         = (document.getElementById('pa-fecha')&&document.getElementById('pa-fecha').value)||'';
+  var prioridad     = (document.getElementById('pa-prioridad')&&document.getElementById('pa-prioridad').value)||'media';
+  var estado        = (document.getElementById('pa-estado')&&document.getElementById('pa-estado').value)||'pendiente';
+  var avance        = parseInt((document.getElementById('pa-avance')&&document.getElementById('pa-avance').value)||0)||0;
+  var observaciones = (document.getElementById('pa-obs')&&document.getElementById('pa-obs').value||'').trim();
+  if(editingPA){
+    var a = PA.find(function(x){return x.id===editingPA;});
+    if(a){
+      a.actividad=actividad; a.responsable=responsable; a.persona=persona;
+      a.fecha=fecha; a.prioridad=prioridad; a.estado=estado;
+      a.avance=avance; a.observaciones=observaciones;
+      a.evidencias=paEvidencias.slice();
+      a.actualizadoEn=new Date().toISOString();
+    }
+    showToast('✓ Actividad actualizada');
+  } else {
+    PA.push({
+      id:'pa_'+Date.now(), actividad:actividad, responsable:responsable, persona:persona,
+      fecha:fecha, prioridad:prioridad, estado:estado, avance:avance,
+      observaciones:observaciones, evidencias:paEvidencias.slice(),
+      creadoEn:new Date().toISOString(), actualizadoEn:new Date().toISOString()
+    });
+    showToast('✓ Nueva actividad creada');
+  }
+  savePAData();
+  if(typeof _fbReady!=='undefined'&&_fbReady&&typeof fbSavePA==='function') setTimeout(fbSavePA,0);
+  closePAModal();
+  renderPA();
+}
+
 function syncEstadoFromAvance(v){
   const n=parseInt(v);
   const sel=document.getElementById('pa-estado');
@@ -3607,27 +3668,13 @@ ${infoBar}${blockedBar}
 
 // ── PILAR TAB SWITCHER ───────────────────────────────────────────
 function switchPilar(cardId, pilar){
-  // In team view there can be duplicate IDs (one hidden in #main, one visible in #team-card-container).
-  // Always prefer the visible/teamview card.
-  var card = null;
-  var all = document.querySelectorAll('[id="' + cardId + '"]');
-  if(all.length > 1){
-    for(var i = 0; i < all.length; i++){
-      if(all[i].closest && all[i].closest('#teamview')){
-        card = all[i]; break;
-      }
-      if(all[i].offsetParent !== null){
-        card = all[i]; // visible element, use as fallback
-      }
-    }
-  }
-  if(!card) card = document.getElementById(cardId);
+  const card = document.getElementById(cardId);
   if(!card) return;
   card.querySelectorAll('.cp-tab').forEach(function(t){t.classList.remove('active');});
-  var at = card.querySelector('.cp-tab-'+pilar);
+  const at = card.querySelector('.cp-tab-'+pilar);
   if(at) at.classList.add('active');
   card.querySelectorAll('.cp-panel').forEach(function(p){p.style.display='none';});
-  var ap = card.querySelector('.cp-panel-'+pilar);
+  const ap = card.querySelector('.cp-panel-'+pilar);
   if(ap) ap.style.display='block';
 }
 
@@ -5350,39 +5397,51 @@ window.addEventListener('fb-ready', function(){
 });
 
 // ── SAVE: Push all DATA (collaborator states) to Firestore ────────
+// Fotos se guardan como base64 comprimido (<200KB) directamente en Firestore.
+// No se usa Firebase Storage (requiere plan de pago en algunas regiones).
 async function fbSave(){
   if(!_fbReady || !window._fb) return;
   try{
     const {db, doc, setDoc} = window._fb;
-    // Save each collaborator's mutable fields to Firestore
     const batch = DATA.map(function(u){
-      return setDoc(doc(db,'colaboradores', String(u.cedula)), {
-        cedula: u.cedula,
-        satisfaccion: u.satisfaccion||'⚪',
-        principios:   u.principios||'⚪',
-        gemba:        u.gemba||'⚪',
-        buzon:        u.buzon||'⚪',
-        engagement:   u.engagement||'⚪',
-        seg_psico:    u.seg_psico||'⚪',
-        pct:          u.pct||0,
-        corridas:     u.corridas||0,
-        pendientes:   u.pendientes||0,
-        detalle:      u.detalle||'—',
-        phone:        u.phone||'',
-        // NOTA: foto (base64) no se guarda en Firestore — límite 1MB/doc.
-        // Las fotos persisten en localStorage. Para compartir entre dispositivos, migrar a Firebase Storage.
-        tags:         u.tags||[],
-        edad:         u.edad||'',
-        ingreso:      u.ingreso||'',
-        skap:         u.skap||'',
-        cualidades:   u.cualidades||[],
-        rol:          u.rol||'',
-        padrinoCed:   u.padrinoCed||'',
-        bloqueado:    u.bloqueado||u.blocked||false,
+      // Build dynamic survey keys object
+      var surveyKeys = {};
+      if(typeof SURVEYS!=='undefined'){
+        SURVEYS.forEach(function(sv){ surveyKeys[sv.id]=u[sv.id]||'⚪'; });
+      }
+      // Photo: only save if it's a compressed base64 (<250KB after compression)
+      // or already a URL (legacy). Never save huge raw base64.
+      var photoSave = '';
+      if(u.photo){
+        if(u.photo.startsWith('http')){ photoSave = u.photo; } // URL = always save
+        else if(u.photo.length < 250000){ photoSave = u.photo; } // compressed base64 OK
+        // else: too large, skip (user should re-upload and it'll get compressed)
+      }
+      return setDoc(doc(db,'colaboradores', String(u.cedula)), Object.assign({
+        cedula:         u.cedula,
+        satisfaccion:   u.satisfaccion||'⚪',
+        principios:     u.principios||'⚪',
+        gemba:          u.gemba||'⚪',
+        buzon:          u.buzon||'⚪',
+        engagement:     u.engagement||'⚪',
+        seg_psico:      u.seg_psico||'⚪',
+        pct:            u.pct||0,
+        corridas:       u.corridas||0,
+        pendientes:     u.pendientes||0,
+        detalle:        u.detalle||'—',
+        phone:          u.phone||'',
+        photo:          photoSave,
+        tags:           u.tags||[],
+        edad:           u.edad||'',
+        ingreso:        u.ingreso||'',
+        skap:           u.skap||'',
+        cualidades:     u.cualidades||[],
+        rol:            u.rol||'',
+        padrinoCed:     u.padrinoCed||'',
+        bloqueado:      u.bloqueado||u.blocked||false,
         bloqueadoRazon: u.bloqueadoRazon||u.blockReason||'',
-        updatedAt:    new Date().toISOString(),
-        photo:        u.photo&&u.photo.length<500000 ? u.photo : '' // Guardar foto en Firebase si es <500KB
-      }, {merge:true});
+        updatedAt:      new Date().toISOString()
+      }, surveyKeys), {merge:true});
     });
     await Promise.all(batch);
     console.log('[Firebase] Colaboradores guardados:', DATA.length);
@@ -5451,6 +5510,11 @@ async function fbLoadAll(){
       const d = docSnap.data();
       const u = DATA.find(function(x){return String(x.cedula)===String(d.cedula);});
       if(u){
+        // Restore dynamic survey keys saved in Firestore
+        var surveyUpdate = {};
+        if(typeof SURVEYS!=='undefined'){
+          SURVEYS.forEach(function(sv){ if(d[sv.id]!==undefined) surveyUpdate[sv.id]=d[sv.id]; });
+        }
         Object.assign(u, {
           satisfaccion: d.satisfaccion||u.satisfaccion,
           principios:   d.principios||u.principios,
@@ -5463,7 +5527,8 @@ async function fbLoadAll(){
           pendientes:   d.pendientes!==undefined?d.pendientes:u.pendientes,
           detalle:      d.detalle||u.detalle,
           phone:        d.phone||u.phone,
-          photo:        d.photo||u.photo||'', // Cargar foto desde Firebase o mantener local
+          // Accept base64 (compressed) or URL, prefer non-empty value from Firestore
+          photo:        d.photo ? d.photo : (u.photo||''),
           tags:         d.tags||u.tags,
           edad:         d.edad||u.edad,
           ingreso:      d.ingreso||u.ingreso,
@@ -5473,7 +5538,7 @@ async function fbLoadAll(){
           padrinoCed:   d.padrinoCed||u.padrinoCed,
           bloqueado:    d.bloqueado!==undefined?d.bloqueado:(u.bloqueado||u.blocked||false),
           bloqueadoRazon: d.bloqueadoRazon||u.bloqueadoRazon||u.blockReason||''
-        });
+        }, surveyUpdate);
         loaded++;
       }
     });
@@ -5504,10 +5569,17 @@ async function fbLoadAll(){
       Object.assign(RR_DATA, rrDoc.data().items);
     }
     
+    // Always re-render so VI/IC/RR data appears even if no collaborator rows updated
+    render();
     if(loaded > 0){
       console.log('[Firebase] Cargados:', loaded, 'colaboradores');
-      render();
       showToast('☁️ Datos sincronizados desde Firebase ('+loaded+' colaboradores)');
+      // Refresh team view if active so photo appears immediately
+      if(typeof role!=='undefined'&&role==='team'&&typeof _teamUser!=='undefined'&&_teamUser){
+        var freshU=DATA.find(function(x){return x.cedula===_teamUser.cedula;});
+        if(freshU){_teamUser=freshU;}
+        if(typeof openTeamView==='function') openTeamView();
+      }
     }
   } catch(e){
     console.error('[Firebase] Error cargando:', e);

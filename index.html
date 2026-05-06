@@ -3898,7 +3898,7 @@ ${infoBar}${blockedBar}
         <span>💰</span>
         <span class="vi-hl">Variable — People</span>
         <div class="vi-month-nav">
-          ${(_VI_REG[cardId]=vi.hist,'')/*store in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" data-card="'+cardId+'" data-idx="'+i+'">'+h.m+'</button>').join('')}
+          ${(_VI_REG[cardId]={hist:vi.hist,globalAvg:vi.avg},'')/*store in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" data-card="'+cardId+'" data-idx="'+i+'">'+h.m+'</button>').join('')}
         </div>
       </div>
       <div class="vi-stats" id="vi-stats-${cardId}">
@@ -5709,13 +5709,16 @@ function deleteCurrentCard(){
 
 // ── VI Month Navigation ─────────────────────────────────────────
 function selectVIMonth(cardId, idx){
-  var hist = _VI_REG[cardId];
+  var reg  = _VI_REG[cardId];
+  if(!reg) return;
+  var hist = Array.isArray(reg.hist) ? reg.hist : reg; // support both {hist,avg} and plain array
   if(!hist || !hist[idx]) return;
   var h    = hist[idx];
-  var c    = h.c   || 0;
-  var p    = h.p   || 0;
-  var v    = h.v   || 0;
-  var avg  = h.avg !== undefined ? h.avg : null;
+  var c    = (h.c !== undefined ? h.c : 0);
+  var p    = (h.p !== undefined ? h.p : 0);
+  var v    = (h.v !== undefined ? h.v : 0);
+  // avg: use per-entry avg if present, otherwise use global avg stored in registry
+  var avg  = (h.avg !== undefined) ? h.avg : (reg.globalAvg !== undefined ? reg.globalAvg : null);
   var sec  = document.getElementById('vi-'+cardId);
   if(!sec) return;
   // ── Active month button (for loop — NodeList.forEach fails on old Android)
@@ -5730,7 +5733,7 @@ function selectVIMonth(cardId, idx){
     var sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
     if(sv0){ sv0.style.color=col; sv0.textContent=c+'%'; }
     // Promedio
-    if(avg !== null){
+    if(avg !== null && avg !== undefined){
       var sv1 = statsEl.children[1] && statsEl.children[1].querySelector('.vi-sv');
       if(sv1){ sv1.style.color=avg>=80?'var(--green)':avg>=50?'var(--amber)':'var(--red)'; sv1.textContent=avg+'%'; }
     }

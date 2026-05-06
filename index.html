@@ -1515,7 +1515,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .rmd-ck-val{font-size:.85rem;font-weight:800;line-height:1;letter-spacing:-.02em}
 .rmd-ck-sm{font-size:.62rem!important;font-weight:600!important;color:var(--text)!important}
 .rmd-ck-lbl{font-size:.5rem;color:var(--text3);font-family:var(--mo);text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
-.rmd-trips-compact{margin:.3rem 0;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+.rmd-trips-compact{margin:.3rem 0;border:1px solid var(--border);border-radius:7px;overflow-x:auto;overflow-y:hidden}
 .rmd-tc-row{display:grid;grid-template-columns:40px 1fr auto;gap:8px;align-items:center;font-size:.63rem;padding:4px 8px;border-bottom:1px solid var(--border)}
 .rmd-tc-row:last-child{border-bottom:none}
 .rmd-tc-row:nth-child(even){background:var(--surface2)}
@@ -1569,6 +1569,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
   letter-spacing:.07em;color:var(--text3);
   padding:4px 8px;border-bottom:2px solid var(--border);
   background:var(--surface2);
+  min-width:320px;
 }
 .rmd-tc-row{
   display:grid;
@@ -1576,6 +1577,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
   gap:6px;align-items:center;
   font-size:.62rem;padding:4px 8px;
   border-bottom:1px solid var(--border);
+  min-width:320px;
 }
 .rmd-tc-row:last-child{border-bottom:none}
 .rmd-tc-row:nth-child(even){background:var(--surface2)}
@@ -2759,11 +2761,11 @@ function openPDF(ced){
     ${(()=>{
       const rmdD=getRMD(u.cedula);
       if(!rmdD) return '';
-      const rc2=rmdD.ur>=90?'#16a34a':rmdD.ur>=70?'#2563eb':rmdD.ur>=50?'#d97706':'#dc2626';
-      const ac2=rmdD.avg>=90?'#16a34a':rmdD.avg>=70?'#2563eb':rmdD.avg>=50?'#d97706':'#dc2626';
+      const rc2=rmdD.ur>=4.5?'#16a34a':rmdD.ur>=3.5?'#2563eb':rmdD.ur>=2.5?'#d97706':'#dc2626';
+      const ac2=rmdD.avg>=4.5?'#16a34a':rmdD.avg>=3.5?'#2563eb':rmdD.avg>=2.5?'#d97706':'#dc2626';
       const tRows=rmdD.rec.map(t=>{
   const rv=t.r||t.rmd||0;
-  const tc=rv>=90?'#16a34a':rv>=70?'#2563eb':rv>=50?'#d97706':'#dc2626';
+  const tc=rv>=4.5?'#16a34a':rv>=3.5?'#2563eb':rv>=2.5?'#d97706':'#dc2626';
   const ev=t.e; const rcv=t.rc;
   const ec=ev!==undefined?(ev>=80?'#16a34a':ev>=50?'#d97706':'#dc2626'):'#94a3b8';
   const rcc=rcv!==undefined?(rcv===0?'#16a34a':rcv<5?'#d97706':'#dc2626'):'#94a3b8';
@@ -2772,7 +2774,7 @@ function openPDF(ced){
     +'<td style="padding:5px 8px;color:#0f172a;font-weight:600;font-size:10px;white-space:nowrap">'+(t.p||t.placa||'—')+'</td>'
     +'<td style="padding:5px 8px;color:'+ec+';font-family:monospace;font-size:10px;text-align:center">'+(ev!==undefined?ev+'%':'—')+'</td>'
     +'<td style="padding:5px 8px;color:'+rcc+';font-family:monospace;font-size:10px;text-align:center">'+(rcv!==undefined?rcv:'—')+'</td>'
-    +'<td style="padding:5px 8px;color:'+tc+';font-weight:700;font-family:monospace;font-size:11px;text-align:center">'+rv+'%</td>'
+    +'<td style="padding:5px 8px;color:'+tc+';font-weight:700;font-family:monospace;font-size:11px;text-align:center">'+rv+'</td>'
     +'</tr>';
 }).join('');
 const tHeader='<tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">'
@@ -2785,14 +2787,14 @@ const tHeader='<tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">'
       return '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;border-top:3px solid #f59e0b">'
         +'<div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#92400e;margin-bottom:10px">🚚 PILAR DELIVERY — RMD Operativo</div>'
         +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:10px">'
-        +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:18px;font-weight:800;color:'+rc2+';line-height:1">'+rmdD.ur+'%</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">ÚLTIMO</div></div>'
-        +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:18px;font-weight:800;color:'+ac2+';line-height:1">'+rmdD.avg+'%</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">PROMEDIO</div></div>'
+        +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:18px;font-weight:800;color:'+rc2+';line-height:1">'+rmdD.ur+'</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">ÚLTIMO</div></div>'
+        +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:18px;font-weight:800;color:'+ac2+';line-height:1">'+rmdD.avg+'</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">PROMEDIO</div></div>'
         +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:13px;font-weight:700;color:#0f172a;line-height:1">'+(rmdD.up||'—')+'</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">PLACA</div></div>'
         +'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px"><div style="font-size:11px;font-weight:600;color:#0f172a;line-height:1">'+(rmdD.uf||'—')+'</div><div style="font-size:9px;color:#94a3b8;font-family:monospace;margin-top:2px">FECHA</div></div>'
         +'</div>'
-        +'<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+rmdD.avg+'%;background:'+ac2+';border-radius:4px"></div></div>'
+        +'<div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;margin-bottom:8px"><div style="height:100%;width:'+rmdD.avg/5*100+'%;background:'+ac2+';border-radius:4px"></div></div>'
         +'<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">'+tHeader+tRows+'</table>'
-        +'<div style="text-align:center;font-size:9px;color:#94a3b8;margin-top:8px;font-family:monospace">'+rmdD.v+' viajes · Mín '+rmdD.mn+'% · Máx '+rmdD.mx+'%</div>'
+        +'<div style="text-align:center;font-size:9px;color:#94a3b8;margin-top:8px;font-family:monospace">'+rmdD.v+' viajes · Mín '+rmdD.mn+' · Máx '+rmdD.mx+'</div>'
         +'</div>';
     })()}
     <!-- REPORTES EN RUTA -->
@@ -3911,19 +3913,35 @@ ${infoBar}${blockedBar}
     </div>`:''}
   </div>
   <div class="cp-panel cp-panel-delivery" style="display:none">
-    ${rmd?`<div class="rmd-compact">
-      <div class="rmd-compact-kpis">
-        <div class="rmd-ck"><div class="rmd-ck-val" style="color:${rmdColor(rmd.ur)}">${rmd.ur}%</div><div class="rmd-ck-lbl">Último</div></div>
-        <div class="rmd-ck"><div class="rmd-ck-val" style="color:${rmdColor(rmd.avg)}">${rmd.avg}%</div><div class="rmd-ck-lbl">Promedio</div></div>
-        <div class="rmd-ck"><div class="rmd-ck-val rmd-ck-sm">${rmd.up||'—'}</div><div class="rmd-ck-lbl">Placa</div></div>
-        <div class="rmd-ck"><div class="rmd-ck-val rmd-ck-sm">${rmd.uf||'—'}</div><div class="rmd-ck-lbl">Fecha</div></div>
-      </div>
-      <div class="rmd-bar"><div class="rmd-bf" style="width:${rmd.avg}%;background:${rmdColor(rmd.avg)}"></div></div>
-      <div class="rmd-trips-compact"><div class="rmd-tc-header"><span class="rmd-tc-f">Fecha</span><span class="rmd-tc-p">Placa</span><span class="rmd-tc-tr">Transp.</span><span class="rmd-tc-e">Entrega</span><span class="rmd-tc-rc">Rechazo</span><span class="rmd-tc-r">RMD</span></div>
-        ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-tr">'+(t.tr||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+(t.r>0?rmdColor(t.r):'var(--text3)')+'">'+((t.r>0)?(Math.round(t.r*10)/10+'%'):'—')+'</span></div>').join('')}
-      </div>
-      <div class="rmd-total">${rmd.v} viajes · Min ${rmd.mn}% · Max ${rmd.mx}%</div>
-    </div>`:`<div style="padding:.8rem;text-align:center;color:var(--text3);font-size:.72rem"><div style="font-size:1.5rem;margin-bottom:4px">🚚</div>Sin datos de delivery registrados</div>`}
+    ${(()=>{
+      if(!rmd) return '<div style="padding:.8rem;text-align:center;color:var(--text3);font-size:.72rem"><div style="font-size:1.5rem;margin-bottom:4px">🚚</div>Sin datos de delivery registrados</div>';
+      const norm=v=>v>0?Math.min(5,Math.max(1,Math.round(v>5?v/20:v))):0;
+      const ur=norm(rmd.ur),avg=Math.round((rmd.avg>5?rmd.avg/20:rmd.avg)*10)/10,mn=norm(rmd.mn),mx=norm(rmd.mx);
+      const rows=rmd.rec.map(t=>{
+        const rv=norm(t.r);
+        return '<div class="rmd-tc-row">'
+          +'<span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span>'
+          +'<span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span>'
+          +'<span class="rmd-tc-tr">'+(t.tr||'—')+'</span>'
+          +'<span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span>'
+          +'<span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span>'
+          +'<span class="rmd-tc-r" style="color:'+(rv>0?rmdColor(rv):'var(--text3)')+'">'+( rv||'—')+'</span>'
+          +'</div>';
+      }).join('');
+      return '<div class="rmd-compact">'
+        +'<div class="rmd-compact-kpis">'
+        +'<div class="rmd-ck"><div class="rmd-ck-val" style="color:'+rmdColor(ur)+'">'+ur+'</div><div class="rmd-ck-lbl">Último</div></div>'
+        +'<div class="rmd-ck"><div class="rmd-ck-val" style="color:'+rmdColor(avg)+'">'+avg+'</div><div class="rmd-ck-lbl">Promedio</div></div>'
+        +'<div class="rmd-ck"><div class="rmd-ck-val rmd-ck-sm">'+(rmd.up||'—')+'</div><div class="rmd-ck-lbl">Placa</div></div>'
+        +'<div class="rmd-ck"><div class="rmd-ck-val rmd-ck-sm">'+(rmd.uf||'—')+'</div><div class="rmd-ck-lbl">Fecha</div></div>'
+        +'</div>'
+        +'<div class="rmd-bar"><div class="rmd-bf" style="width:'+avg/5*100+'%;background:'+rmdColor(avg)+'"></div></div>'
+        +'<div class="rmd-trips-compact"><div class="rmd-tc-header"><span class="rmd-tc-f">Fecha</span><span class="rmd-tc-p">Placa</span><span class="rmd-tc-tr">Transp.</span><span class="rmd-tc-e">Entrega</span><span class="rmd-tc-rc">Rechazo</span><span class="rmd-tc-r">RMD</span></div>'
+        +rows
+        +'</div>'
+        +'<div class="rmd-total">'+rmd.v+' viajes · Min '+mn+' · Max '+mx+'</div>'
+        +'</div>';
+    })()}
   </div>
   ${rr&&rr.length?`<div class="cp-panel cp-panel-rr" style="display:none;padding:.5rem 0">
     <table class="rr-table">
@@ -4638,7 +4656,7 @@ function renderIndicators(){
       ${[
         {l:'Con RMD', v:rmdMatched, c:'var(--blue)', s:`de ${DATA.length} colaboradores`},
         {l:'Sin RMD',  v:DATA.length-rmdMatched, c:'var(--text3)', s:'Sin registro de viajes'},
-        {l:'Avg RMD',  v:rmdAvgAll+'%', c:rmdColor(rmdAvgAll), s:'Promedio global'},
+        {l:'Avg RMD',  v:rmdAvgAll, c:rmdColor(rmdAvgAll), s:'Promedio global (1–5)'},
       ].map(s=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.55rem .6rem;text-align:center">
         <div style="font-size:1.1rem;font-weight:800;color:${s.c};line-height:1">${s.v}</div>
         <div style="font-size:.57rem;color:var(--text3);font-family:var(--mo);text-transform:uppercase;letter-spacing:.06em;margin-top:2px">${s.l}</div>
@@ -4652,8 +4670,8 @@ function renderIndicators(){
       return `<div style="display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid var(--border)">
         <span style="font-family:var(--mo);font-size:.6rem;color:var(--text3);width:14px">${i+1}</span>
         <div style="flex:1;min-width:0"><div style="font-size:.7rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nombre}</div><div style="font-size:.6rem;color:var(--text2)">${r.v} viajes · Placa ${r.up||'—'}</div></div>
-        <div style="width:50px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${r.avg}%;background:${col};border-radius:3px"></div></div>
-        <span style="font-family:var(--mo);font-size:.7rem;font-weight:800;color:${col};min-width:34px;text-align:right">${r.avg}%</span>
+        <div style="width:50px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${r.avg/5*100}%;background:${col};border-radius:3px"></div></div>
+        <span style="font-family:var(--mo);font-size:.7rem;font-weight:800;color:${col};min-width:34px;text-align:right">${r.avg}</span>
       </div>`;
     }).join('')}
     <div style="font-family:var(--mo);font-size:.56rem;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:.6rem 0 .4rem">BOTTOM 5 — Menor cumplimiento RMD</div>
@@ -4663,8 +4681,8 @@ function renderIndicators(){
       return `<div style="display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid var(--border)">
         <span style="font-family:var(--mo);font-size:.6rem;color:var(--text3);width:14px">${i+1}</span>
         <div style="flex:1;min-width:0"><div style="font-size:.7rem;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.nombre}</div><div style="font-size:.6rem;color:var(--text2)">${r.v} viajes · ${r.uf||'—'}</div></div>
-        <div style="width:50px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${r.avg}%;background:${col};border-radius:3px"></div></div>
-        <span style="font-family:var(--mo);font-size:.7rem;font-weight:800;color:${col};min-width:34px;text-align:right">${r.avg}%</span>
+        <div style="width:50px;height:5px;background:var(--surface3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${r.avg/5*100}%;background:${col};border-radius:3px"></div></div>
+        <span style="font-family:var(--mo);font-size:.7rem;font-weight:800;color:${col};min-width:34px;text-align:right">${r.avg}</span>
       </div>`;
     }).join('')}
   </div>`;
@@ -5271,7 +5289,7 @@ function shareTeamCardWA(){
     </div>
 
     <!-- DELIVERY RMD -->
-    ${(()=>{const rmd=getRMD(u.cedula);if(!rmd)return '';const rc=rmd.ur>=90?'#16a34a':rmd.ur>=70?'#2563eb':rmd.ur>=50?'#d97706':'#dc2626';const ac=rmd.avg>=90?'#16a34a':rmd.avg>=70?'#2563eb':rmd.avg>=50?'#d97706':'#dc2626';return '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;border-top:3px solid #f59e0b"><div style="font-size:9px;font-weight:700;color:#92400e;margin-bottom:8px">🚚 DELIVERY — RMD Operativo</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:16px;font-weight:800;color:'+rc+';line-height:1">'+rmd.ur+'%</div><div style="font-size:8px;color:#94a3b8">ÚLTIMO</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:16px;font-weight:800;color:'+ac+';line-height:1">'+rmd.avg+'%</div><div style="font-size:8px;color:#94a3b8">PROMEDIO</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:12px;font-weight:700;color:#0f172a;line-height:1">'+(rmd.up||'—')+'</div><div style="font-size:8px;color:#94a3b8">PLACA</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:10px;font-weight:600;color:#0f172a;line-height:1">'+(rmd.uf||'—')+'</div><div style="font-size:8px;color:#94a3b8">FECHA</div></div></div>'+'<div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+rmd.avg+'%;background:'+ac+'"></div></div>'+'<div style="font-size:8px;color:#94a3b8;text-align:center">'+rmd.v+' viajes · Min '+rmd.mn+'% · Max '+rmd.mx+'%</div></div>';})()}
+    ${(()=>{const rmd=getRMD(u.cedula);if(!rmd)return '';const rc=rmd.ur>=4.5?'#16a34a':rmd.ur>=3.5?'#2563eb':rmd.ur>=2.5?'#d97706':'#dc2626';const ac=rmd.avg>=4.5?'#16a34a':rmd.avg>=3.5?'#2563eb':rmd.avg>=2.5?'#d97706':'#dc2626';return '<div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:10px;border-top:3px solid #f59e0b"><div style="font-size:9px;font-weight:700;color:#92400e;margin-bottom:8px">🚚 DELIVERY — RMD Operativo</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px">'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:16px;font-weight:800;color:'+rc+';line-height:1">'+rmd.ur+'</div><div style="font-size:8px;color:#94a3b8">ÚLTIMO</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:16px;font-weight:800;color:'+ac+';line-height:1">'+rmd.avg+'</div><div style="font-size:8px;color:#94a3b8">PROMEDIO</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:12px;font-weight:700;color:#0f172a;line-height:1">'+(rmd.up||'—')+'</div><div style="font-size:8px;color:#94a3b8">PLACA</div></div>'+'<div style="text-align:center;background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px"><div style="font-size:10px;font-weight:600;color:#0f172a;line-height:1">'+(rmd.uf||'—')+'</div><div style="font-size:8px;color:#94a3b8">FECHA</div></div></div>'+'<div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+rmd.avg/5*100+'%;background:'+ac+'"></div></div>'+'<div style="font-size:8px;color:#94a3b8;text-align:center">'+rmd.v+' viajes · Min '+rmd.mn+' · Max '+rmd.mx+'</div></div>';})()}
     <!-- Footer -->
     <div style="text-align:center;font-size:9px;color:#94a3b8;padding-top:8px;border-top:1px solid #e2e8f0;font-family:monospace">
       Panel de Control People · CD Itagüí 2026 · ${new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'})}
@@ -5377,9 +5395,9 @@ function getRR(ced){
 
 function rmdColor(pct){
   if(pct===null||pct===undefined) return 'var(--text3)';
-  if(pct>=90) return 'var(--green)';
-  if(pct>=70) return 'var(--blue)';
-  if(pct>=50) return 'var(--amber)';
+  if(pct>=4.5) return 'var(--green)';
+  if(pct>=3.5) return 'var(--blue)';
+  if(pct>=2.5) return 'var(--amber)';
   return 'var(--red)';
 }
 
@@ -5486,7 +5504,7 @@ function processUploadedRows(rows, type, filename, label, stat, zone, prev){
         ? fecha.toISOString().slice(0,10)
         : String(fecha||'').slice(0,10);
       const rmd_raw = parseFloat(row['RMD']||0)||0;
-      const rmd_pct = rmd_raw<=5 ? Math.round(rmd_raw/5*1000)/10 : rmd_raw; // 1-5 → 0-100%
+      const rmd_pct = rmd_raw > 0 ? Math.min(5, Math.max(1, Math.round(rmd_raw > 5 ? rmd_raw / 20 : rmd_raw))) : 0; // integer 1–5
       const placa = String(row['PLACA DEL VEHÍCULO']||row['PLACA']||'');
       const transporte = String(row['TRANSPORTE']||'').trim();
       const entrega_raw = parseFloat(row['ENTREGA']||row['% ENTREGA']||row['EFECTIVIDAD ENTREGA']||row['Efectividad']||row['Entrega en Rango']||row['ENTREGA EN RANGO']||0)||undefined;
@@ -6360,11 +6378,8 @@ function _parseXLSXForAutoLoad(rows, type) {
         : String(fecha || '').slice(0, 10);
       if (!fecha_str || fecha_str.length < 6) return;
       const rmd_raw = parseFloat(rk['rmd'] || 0) || 0;
-      // Handle ratio (0-1), score out of 5 (1-5), or percentage (>5)
-      const rmd_pct = rmd_raw <= 0 ? 0
-                    : rmd_raw <= 1 ? Math.round(rmd_raw * 1000) / 10
-                    : rmd_raw <= 5 ? Math.round(rmd_raw / 5 * 1000) / 10
-                    : Math.round(rmd_raw * 10) / 10;
+      // RMD is integer 1-5; if value >5 it was already converted to 0-100, bring back to 1-5
+      const rmd_pct = rmd_raw <= 0 ? 0 : Math.min(5, Math.max(1, Math.round(rmd_raw > 5 ? rmd_raw / 20 : rmd_raw)));
       const placa = String(rk['placa del vehículo'] || rk['placa del vehiculo'] || rk['placa'] || '');
       const transporte = String(rk['transporte'] || '').trim();
       const entrega_raw = parseFloat(rk['entrega en rango'] || rk['entrega'] || rk['% entrega'] || rk['efectividad entrega'] || rk['efectividad'] || 0) || undefined;

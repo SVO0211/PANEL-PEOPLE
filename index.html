@@ -1488,10 +1488,12 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .card-pilars{border-top:1px solid var(--border)}
 .cp-tabs{display:flex;gap:0;background:var(--surface2);border-bottom:1px solid var(--border)}
 .cp-tab{
-  flex:1;padding:6px 8px;font-size:.68rem;font-weight:700;
+  flex:1;padding:8px 8px;font-size:.68rem;font-weight:700;
   font-family:var(--fn);cursor:pointer;border:none;
   background:transparent;color:var(--text3);
   transition:all .15s;border-right:1px solid var(--border);
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+  min-height:40px;
 }
 .cp-tab:last-child{border-right:none}
 .cp-tab:hover{color:var(--text)}
@@ -1551,9 +1553,10 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 /* ── VI Month Navigation ── */
 .vi-head{flex-wrap:wrap;gap:5px}
 .vi-month-nav{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;width:100%}
-.vi-mon-btn{padding:2px 8px;font-size:.6rem;font-weight:600;font-family:var(--fn);
+.vi-mon-btn{padding:4px 10px;font-size:.6rem;font-weight:600;font-family:var(--fn);
   border:1px solid var(--border);border-radius:5px;background:var(--surface2);
-  color:var(--text3);cursor:pointer;transition:all .15s}
+  color:var(--text3);cursor:pointer;transition:all .15s;
+  touch-action:manipulation;-webkit-tap-highlight-color:transparent;min-height:30px}
 .vi-mon-btn:hover{border-color:var(--border2);color:var(--text)}
 .vi-mon-btn.active{background:var(--blue-light);border-color:var(--blue-muted);color:var(--blue)}
 
@@ -2836,16 +2839,11 @@ function render(){
     if(iv){iv.style.display='block';iv.classList.add('open');}
     return;
   }
-  // TEAM MODE: only show logged-in user's own card
+  // TEAM MODE: refresh the visible teamview card — never write to #main
+  // (writing to #main would create a duplicate cardId that getElementById
+  //  returns first, making switchPilar operate on the hidden card)
   if(role==='team'&&_teamUser){
-    const m2=document.getElementById('main');
-    if(m2) m2.innerHTML='<div class="cards">'+cardHTML(_teamUser)+'</div>';
-    const sc2=document.getElementById('sc2'); if(sc2) sc2.textContent=1;
-    const sgc=document.getElementById('sgc'); if(sgc) sgc.textContent=1;
-    const tc=document.getElementById('tc'); if(tc) tc.textContent=DATA.length;
-    const cc=document.getElementById('cc'); if(cc) cc.textContent=DATA.filter(u=>u.pct>=1).length;
-    const ap=document.getElementById('ap'); if(ap) ap.textContent=Math.round(DATA.reduce((a,b)=>a+b.pct,0)/DATA.length*100)+'%';
-    const gc=document.getElementById('gc'); if(gc) gc.textContent='—';
+    if(typeof openTeamView==='function') openTeamView();
     return;
   }
   const q=document.getElementById('search').value.toLowerCase();

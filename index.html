@@ -3873,9 +3873,9 @@ ${blockedOverlay}
 ${infoBar}${blockedBar}
 <div class="card-pilars">
   <div class="cp-tabs">
-    <button class="cp-tab cp-tab-people active" onclick="switchPilar('${cardId}','people')">👥 People</button>
-    ${rmd?`<button class="cp-tab cp-tab-delivery" onclick="switchPilar('${cardId}','delivery')">🚚 Delivery</button>`:''}
-    <button class="cp-tab cp-tab-rr" onclick="switchPilar('${cardId}','rr')">${rr&&rr.length?`⚠️ Reportes <span style="background:var(--red);color:#fff;border-radius:99px;padding:0 5px;font-size:.55rem;font-weight:800;margin-left:2px">${rr.length}</span>`:'⚠️ Reportes'}</button>
+    <button class="cp-tab cp-tab-people active">👥 People</button>
+    <button class="cp-tab cp-tab-delivery">🚚 Delivery</button>
+    <button class="cp-tab cp-tab-rr">${rr&&rr.length?`⚠️ Reportes <span style="background:var(--red);color:#fff;border-radius:99px;padding:0 5px;font-size:.55rem;font-weight:800;margin-left:2px">${rr.length}</span>`:'⚠️ Reportes'}</button>
   </div>
   <div class="cp-panel cp-panel-people">
     <div class="sk-compact">
@@ -3898,7 +3898,7 @@ ${infoBar}${blockedBar}
         <span>💰</span>
         <span class="vi-hl">Variable — People</span>
         <div class="vi-month-nav">
-          ${(_VI_REG[cardId]=vi.hist,'')/*store in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" onclick="selectVIMonth(\''+cardId+'\','+i+')">'+h.m+'</button>').join('')}
+          ${(_VI_REG[cardId]=vi.hist,'')/*store in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" data-card="'+cardId+'" data-idx="'+i+'">'+h.m+'</button>').join('')}
         </div>
       </div>
       <div class="vi-stats" id="vi-stats-${cardId}">
@@ -3910,8 +3910,8 @@ ${infoBar}${blockedBar}
       <div class="rmd-bar" id="vi-bar-${cardId}"><div class="rmd-bf" style="width:${vi.uc}%;background:${vi.uc>=80?'var(--green)':vi.uc>=50?'var(--amber)':'var(--red)'}"></div></div>
     </div>`:''}
   </div>
-  ${rmd?`<div class="cp-panel cp-panel-delivery" style="display:none">
-    <div class="rmd-compact">
+  <div class="cp-panel cp-panel-delivery" style="display:none">
+    ${rmd?`<div class="rmd-compact">
       <div class="rmd-compact-kpis">
         <div class="rmd-ck"><div class="rmd-ck-val" style="color:${rmdColor(rmd.ur)}">${rmd.ur}%</div><div class="rmd-ck-lbl">Último</div></div>
         <div class="rmd-ck"><div class="rmd-ck-val" style="color:${rmdColor(rmd.avg)}">${rmd.avg}%</div><div class="rmd-ck-lbl">Promedio</div></div>
@@ -3923,8 +3923,8 @@ ${infoBar}${blockedBar}
         ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-tr">'+(t.tr||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+(t.r>0?rmdColor(t.r):'var(--text3)')+'">'+((t.r>0)?(Math.round(t.r*10)/10+'%'):'—')+'</span></div>').join('')}
       </div>
       <div class="rmd-total">${rmd.v} viajes · Min ${rmd.mn}% · Max ${rmd.mx}%</div>
-    </div>
-  </div>`:''}
+    </div>`:`<div style="padding:.8rem;text-align:center;color:var(--text3);font-size:.72rem"><div style="font-size:1.5rem;margin-bottom:4px">🚚</div>Sin datos de delivery registrados</div>`}
+  </div>
   ${rr&&rr.length?`<div class="cp-panel cp-panel-rr" style="display:none;padding:.5rem 0">
     <table class="rr-table">
       <thead><tr><th style="width:30px">Mes</th><th style="width:70px">Cliente</th><th>Causa Raíz</th><th>Solución</th></tr></thead>
@@ -3940,8 +3940,8 @@ ${infoBar}${blockedBar}
 }
 
 // ── PILAR TAB SWITCHER ───────────────────────────────────────────
-function switchPilar(cardId, pilar){
-  const card = document.getElementById(cardId);
+function switchPilar(cardId, pilar, el){
+  const card = (el && el.closest && el.closest('.card')) || document.getElementById(cardId);
   if(!card) return;
   card.querySelectorAll('.cp-tab').forEach(function(t){t.classList.remove('active');});
   const at = card.querySelector('.cp-tab-'+pilar);
@@ -3950,6 +3950,37 @@ function switchPilar(cardId, pilar){
   const ap = card.querySelector('.cp-panel-'+pilar);
   if(ap) ap.style.display='block';
 }
+
+// ── DELEGATED CLICK HANDLER (tab + month buttons) ────────────────
+// Works after innerHTML replacement — listener lives on document,
+// not on the dynamically-generated buttons.
+document.addEventListener('click', function(e){
+  // ── Tab pilars ────────────────────────────────────────────────
+  const tab = e.target.closest && e.target.closest('.cp-tab');
+  if(tab){
+    // Skip if click is inside teamview — it has its own dedicated handler
+    // that calls stopPropagation. Running both causes the panel to flicker
+    // and never show Delivery/Reportes correctly.
+    if(tab.closest('#teamview')) return;
+    let pilar = null;
+    tab.classList.forEach(function(c){
+      if(c.startsWith('cp-tab-') && c !== 'cp-tab') pilar = c.slice(7);
+    });
+    if(pilar){
+      const card = tab.closest('.card');
+      if(card) switchPilar(card.id, pilar, tab);
+    }
+    return;
+  }
+  // ── Month navigation ──────────────────────────────────────────
+  const mon = e.target.closest && e.target.closest('.vi-mon-btn');
+  if(mon){
+    const cid = mon.dataset.card;
+    const idx = parseInt(mon.dataset.idx, 10);
+    if(cid && !isNaN(idx)) selectVIMonth(cid, idx);
+    return;
+  }
+});
 
 
 function filterPAResp(q, sugId){
@@ -5029,7 +5060,66 @@ function openTeamView(){
 
   // Render the card
   const u = _teamUser;
+  // Preserve the currently active pilar tab across re-renders so users don't
+  // get bounced back to "People" every time render() runs (e.g. on Firebase
+  // sync). Default to 'people' on first render.
+  const _prevContainer = document.getElementById('team-card-container');
+  let _prevPilar = 'people';
+  if(_prevContainer){
+    const _prevActive = _prevContainer.querySelector('.cp-tab.active');
+    if(_prevActive){
+      const _m = _prevActive.className.match(/\bcp-tab-(people|delivery|rr)\b/);
+      if(_m) _prevPilar = _m[1];
+    }
+  }
   document.getElementById('team-card-container').innerHTML = cardHTML(u);
+
+  // Attach tab + month handlers directly to the freshly-rendered elements.
+  // Direct addEventListener (not delegation, not inline onclick) is the only
+  // approach guaranteed to work after innerHTML replacement on all browsers.
+  (function(){
+    var cont = document.getElementById('team-card-container');
+    var card = cont ? cont.querySelector('.card') : null;
+    if(!card) return;
+    // ── Tab buttons ──────────────────────────────────────────────
+    var tabs   = card.querySelectorAll('.cp-tab');
+    var panels = card.querySelectorAll('.cp-panel');
+    for(var ti=0; ti<tabs.length; ti++){
+      (function(btn){
+        var m = btn.className.match(/\bcp-tab-(people|delivery|rr)\b/);
+        if(!m) return;
+        var pilar = m[1];
+        btn.addEventListener('click', function(ev){
+          if(ev && ev.stopPropagation) ev.stopPropagation();
+          for(var i=0;i<tabs.length;i++)   tabs[i].classList.remove('active');
+          btn.classList.add('active');
+          for(var j=0;j<panels.length;j++) panels[j].style.display='none';
+          var panel = card.querySelector('.cp-panel-'+pilar);
+          if(panel) panel.style.display='block';
+        });
+      })(tabs[ti]);
+    }
+    // ── Month navigation buttons ──────────────────────────────────
+    var mons = card.querySelectorAll('.vi-mon-btn');
+    for(var mi=0; mi<mons.length; mi++){
+      (function(btn){
+        var cid = btn.getAttribute('data-card');
+        var idx = parseInt(btn.getAttribute('data-idx'), 10);
+        if(!cid || isNaN(idx)) return;
+        btn.addEventListener('click', function(ev){
+          if(ev && ev.stopPropagation) ev.stopPropagation();
+          selectVIMonth(cid, idx);
+        });
+      })(mons[mi]);
+    }
+    // ── Restore previously active pilar (people/delivery/rr) ──────
+    // After innerHTML replacement, the default-active tab is People. If the
+    // user had Delivery or Reportes open before re-render, switch back.
+    if(_prevPilar && _prevPilar !== 'people'){
+      var _btn = card.querySelector('.cp-tab-'+_prevPilar);
+      if(_btn) _btn.click();
+    }
+  })();
 
   // Render enc detail
   const pp = Math.round(u.pct*100);

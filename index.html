@@ -5330,15 +5330,15 @@ function safe_cc_js(v){
 
 function processUploadedRows(rows, type, filename, label, stat, zone, prev){
   if(type==='vi'){
-    // VARIABLE INDICADORES: CC, FECHA, VALOR DE LA VARIABLE, VARIABLE PAGADA, CUMPLIMIENTO DE VARIABLE
+    // VARIABLE INDICADORES: CC, FECHA, VALOR DE LA VARIABLE, VARIABLE PAGADA, CUMPLIMIENTO DE LA VARIABLE
     const processed = {};
     rows.forEach(function(row){
-      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc']);
+      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc'] || row['CEDULA'] || row['Cedula']);
       if(!cc) return;
-      const mes = String(row['FECHA']||row['Fecha']||'').trim().toUpperCase();
-      const cumpl = parseFloat(row['CUMPLIMIENTO DE VARIABLE']||row['cumplimiento de variable']||0)||0;
-      const valor = parseFloat(row['VALOR DE LA VARIABLE']||0)||0;
-      const pagado = parseFloat(row['VARIABLE PAGADA']||0)||0;
+      const mes = String(row['FECHA']||row['Fecha']||row['MES']||row['Mes']||'').trim().toUpperCase();
+      const cumpl = parseFloat(row['CUMPLIMIENTO DE LA VARIABLE']||row['CUMPLIMIENTO DE VARIABLE']||row['cumplimiento de la variable']||row['cumplimiento de variable']||0)||0;
+      const valor = parseFloat(row['VALOR DE LA VARIABLE']||row['VALOR VARIABLE']||0)||0;
+      const pagado = parseFloat(row['VARIABLE PAGADA']||row['PAGADO']||0)||0;
       if(!cc||!mes) return;
       if(!processed[cc]) processed[cc]=[];
       processed[cc].push({m:mes, c:Math.round(cumpl*1000)/10, v:Math.round(valor), p:Math.round(pagado)});
@@ -6203,17 +6203,26 @@ function _parseXLSXForAutoLoad(rows, type) {
   if (type === 'vi') {
     const processed = {};
     rows.forEach(function(row) {
-      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc']);
+      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc'] || row['CEDULA'] || row['Cedula']);
       if (!cc) return;
-      const mes = String(row['FECHA'] || row['Fecha'] || '').trim().toUpperCase();
-      const cumpl = parseFloat(row['CUMPLIMIENTO DE VARIABLE'] || row['cumplimiento de variable'] || 0) || 0;
-      const valor = parseFloat(row['VALOR DE LA VARIABLE'] || 0) || 0;
-      const pagado = parseFloat(row['VARIABLE PAGADA'] || 0) || 0;
+      const mes = String(row['FECHA'] || row['Fecha'] || row['MES'] || row['Mes'] || '').trim().toUpperCase();
+      const cumpl = parseFloat(
+        row['CUMPLIMIENTO DE LA VARIABLE'] || row['CUMPLIMIENTO DE VARIABLE'] ||
+        row['cumplimiento de la variable'] || row['cumplimiento de variable'] || 0
+      ) || 0;
+      const valor = parseFloat(row['VALOR DE LA VARIABLE'] || row['VALOR VARIABLE'] || 0) || 0;
+      const pagado = parseFloat(row['VARIABLE PAGADA'] || row['PAGADO'] || 0) || 0;
       if (!mes) return;
-      if (!processed[cc]) processed[cc] = [];
-      processed[cc].push({ m: mes, c: Math.round(cumpl * 1000) / 10, v: Math.round(valor), p: Math.round(pagado) });
+      // Una sola entrada por CC+mes (última fila gana si hay duplicados)
+      if (!processed[cc]) processed[cc] = {};
+      processed[cc][mes] = { m: mes, c: Math.round(cumpl * 1000) / 10, v: Math.round(valor), p: Math.round(pagado) };
     });
-    return processed;
+    // Convertir de objeto {mes: {...}} a array
+    const result = {};
+    Object.keys(processed).forEach(function(cc) {
+      result[cc] = Object.values(processed[cc]);
+    });
+    return result;
   }
 
   if (type === 'ic') {
@@ -6270,14 +6279,14 @@ function _parseXLSXForAutoLoad(rows, type) {
     const MO = { 'Enero':1,'Febrero':2,'Marzo':3,'Abril':4,'Mayo':5,'Junio':6,'Julio':7,'Agosto':8,'Septiembre':9,'Octubre':10,'Noviembre':11,'Diciembre':12 };
     const processed = {};
     rows.forEach(function(row) {
-      const cc = safe_cc_js(row['CC'] || row['cc']);
+      const cc = safe_cc_js(row['CC'] || row['cc'] || row['CEDULA'] || row['Cedula'] || row['CC CONDUCTOR'] || row['cc conductor']);
       if (!cc) return;
-      const mes = String(row['MES'] || '').trim();
-      const causa = String(row['Causa Raiz'] || '').trim().slice(0, 70);
-      const sol = String(row['Solución'] || row['Solucion'] || '').trim().slice(0, 60);
+      const mes = String(row['MES'] || row['Mes'] || row['mes'] || '').trim();
+      const causa = String(row['Causa Raiz'] || row['Causa Raíz'] || row['CAUSA RAIZ'] || row['causa raiz'] || row['Causa'] || '').trim().slice(0, 70);
+      const sol = String(row['Solución'] || row['Solucion'] || row['SOLUCIÓN'] || row['SOLUCION'] || row['Solución'] || '').trim().slice(0, 60);
       if (!mes || !causa) return;
       if (!processed[cc]) processed[cc] = [];
-      const cod_cli = String(row['Codigo Cliente'] || row['codigo cliente'] || row['CODIGO CLIENTE'] || '').replace(/\.0$/, '').trim();
+      const cod_cli = String(row['Codigo Cliente'] || row['Código Cliente'] || row['codigo cliente'] || row['CODIGO CLIENTE'] || '').replace(/\.0$/, '').trim();
       const nom_cli = String(row['Nombre Cliente'] || row['nombre cliente'] || row['NOMBRE CLIENTE'] || '').trim().slice(0, 40);
       processed[cc].push({ mo: MO[mes] || 99, m: mes.slice(0, 3), c: causa, s: sol, cc: cod_cli, nc: nom_cli });
     });
@@ -6357,9 +6366,11 @@ function _applyAutoData(parsed) {
   }
 
   if (parsed.rr && Object.keys(parsed.rr).length) {
-    window.RR_DATA = {};
+    // RR_DATA es const — hay que mutar el objeto, no reasignarlo
+    // Primero borrar las claves viejas
+    Object.keys(RR_DATA).forEach(function(k) { delete RR_DATA[k]; });
+    // Luego escribir los datos nuevos
     Object.keys(parsed.rr).forEach(function(cc) {
-      // Almacenar como array directo (igual que el formato hardcodeado) para que getRR() funcione
       RR_DATA[cc] = Array.isArray(parsed.rr[cc]) ? parsed.rr[cc] : [];
     });
   }

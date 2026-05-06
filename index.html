@@ -5246,7 +5246,10 @@ function getVI(ced){
   return PEOPLE_DATA.vi ? (PEOPLE_DATA.vi[String(ced)] || null) : null;
 }
 function getRR(ced){
-  if(!ced||typeof RR_DATA==='undefined') return null;
+  if(!ced) return null;
+  if(window._rr_auto && window._rr_auto[String(ced)]!==undefined)
+    return window._rr_auto[String(ced)];
+  if(typeof RR_DATA==='undefined') return null;
   const d=RR_DATA[String(ced)];
   if(!d) return null;
   return Array.isArray(d)?d:(d.i||null);
@@ -6203,15 +6206,15 @@ function _parseXLSXForAutoLoad(rows, type) {
   if (type === 'vi') {
     const processed = {};
     rows.forEach(function(row) {
-      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc'] || row['CEDULA'] || row['Cedula']);
+      // Normalized key map for robust column lookup (case/whitespace insensitive)
+      const rk = {};
+      Object.keys(row).forEach(function(k){ rk[k.trim().toLowerCase().replace(/\s+/g,' ')] = row[k]; });
+      const cc = safe_cc_js(rk['cc'] || rk['cedula'] || '');
       if (!cc) return;
-      const mes = String(row['FECHA'] || row['Fecha'] || row['MES'] || row['Mes'] || '').trim().toUpperCase();
-      const cumpl = parseFloat(
-        row['CUMPLIMIENTO DE LA VARIABLE'] || row['CUMPLIMIENTO DE VARIABLE'] ||
-        row['cumplimiento de la variable'] || row['cumplimiento de variable'] || 0
-      ) || 0;
-      const valor = parseFloat(row['VALOR DE LA VARIABLE'] || row['VALOR VARIABLE'] || 0) || 0;
-      const pagado = parseFloat(row['VARIABLE PAGADA'] || row['PAGADO'] || 0) || 0;
+      const mes = String(rk['fecha'] || rk['mes'] || '').trim().toUpperCase();
+      const cumpl = parseFloat(rk['cumplimiento de la variable'] || rk['cumplimiento de variable'] || 0) || 0;
+      const valor = parseFloat(rk['valor de la variable'] || rk['valor variable'] || 0) || 0;
+      const pagado = parseFloat(rk['variable pagada'] || rk['pagado'] || 0) || 0;
       if (!mes) return;
       // Una sola entrada por CC+mes (última fila gana si hay duplicados)
       if (!processed[cc]) processed[cc] = {};
@@ -6279,15 +6282,17 @@ function _parseXLSXForAutoLoad(rows, type) {
     const MO = { 'Enero':1,'Febrero':2,'Marzo':3,'Abril':4,'Mayo':5,'Junio':6,'Julio':7,'Agosto':8,'Septiembre':9,'Octubre':10,'Noviembre':11,'Diciembre':12 };
     const processed = {};
     rows.forEach(function(row) {
-      const cc = safe_cc_js(row['CC'] || row['cc'] || row['CEDULA'] || row['Cedula'] || row['CC CONDUCTOR'] || row['cc conductor']);
+      const rk = {};
+      Object.keys(row).forEach(function(k){ rk[k.trim().toLowerCase().replace(/\s+/g,' ')] = row[k]; });
+      const cc = safe_cc_js(rk['cc'] || rk['cedula'] || rk['cc conductor'] || '');
       if (!cc) return;
-      const mes = String(row['MES'] || row['Mes'] || row['mes'] || '').trim();
-      const causa = String(row['Causa Raiz'] || row['Causa Raíz'] || row['CAUSA RAIZ'] || row['causa raiz'] || row['Causa'] || '').trim().slice(0, 70);
-      const sol = String(row['Solución'] || row['Solucion'] || row['SOLUCIÓN'] || row['SOLUCION'] || row['Solución'] || '').trim().slice(0, 60);
+      const mes = String(rk['mes'] || '').trim();
+      const causa = String(rk['causa raiz'] || rk['causa raíz'] || rk['causa'] || '').trim().slice(0, 70);
+      const sol = String(rk['solución'] || rk['solucion'] || rk['solution'] || '').trim().slice(0, 60);
       if (!mes || !causa) return;
       if (!processed[cc]) processed[cc] = [];
-      const cod_cli = String(row['Codigo Cliente'] || row['Código Cliente'] || row['codigo cliente'] || row['CODIGO CLIENTE'] || '').replace(/\.0$/, '').trim();
-      const nom_cli = String(row['Nombre Cliente'] || row['nombre cliente'] || row['NOMBRE CLIENTE'] || '').trim().slice(0, 40);
+      const cod_cli = String(rk['codigo cliente'] || rk['código cliente'] || '').replace(/\.0$/, '').trim();
+      const nom_cli = String(rk['nombre cliente'] || '').trim().slice(0, 40);
       processed[cc].push({ mo: MO[mes] || 99, m: mes.slice(0, 3), c: causa, s: sol, cc: cod_cli, nc: nom_cli });
     });
     const summary = {};
@@ -6366,13 +6371,18 @@ function _applyAutoData(parsed) {
   }
 
   if (parsed.rr && Object.keys(parsed.rr).length) {
-    // RR_DATA es const — hay que mutar el objeto, no reasignarlo
-    // Primero borrar las claves viejas
-    Object.keys(RR_DATA).forEach(function(k) { delete RR_DATA[k]; });
-    // Luego escribir los datos nuevos
+    window._rr_auto = {};
     Object.keys(parsed.rr).forEach(function(cc) {
-      RR_DATA[cc] = Array.isArray(parsed.rr[cc]) ? parsed.rr[cc] : [];
+      window._rr_auto[cc] = Array.isArray(parsed.rr[cc]) ? parsed.rr[cc] : [];
     });
+    console.log('[AutoLoad RR] CCs con reportes:', Object.keys(window._rr_auto));
+  } else {
+    console.warn('[AutoLoad RR] Sin datos de reportes — verifique el archivo Reportes en ruta.xlsx');
+  }
+
+  if (parsed.vi && Object.keys(parsed.vi).length) {
+    const sCC = Object.keys(PEOPLE_DATA.vi || {})[0];
+    if (sCC) console.log('[AutoLoad VI] Muestra CC='+sCC+':', JSON.stringify(PEOPLE_DATA.vi[sCC].hist));
   }
 
   if (typeof role !== 'undefined' && role !== null) {

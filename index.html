@@ -3941,13 +3941,15 @@ ${infoBar}${blockedBar}
 
 // ── PILAR TAB SWITCHER ───────────────────────────────────────────
 function switchPilar(cardId, pilar, el){
-  const card = (el && el.closest && el.closest('.card')) || document.getElementById(cardId);
+  var card = (el && el.closest ? el.closest('.card') : null) || document.getElementById(cardId);
   if(!card) return;
-  card.querySelectorAll('.cp-tab').forEach(function(t){t.classList.remove('active');});
-  const at = card.querySelector('.cp-tab-'+pilar);
+  var allTabs = card.querySelectorAll('.cp-tab');
+  for(var i=0;i<allTabs.length;i++) allTabs[i].classList.remove('active');
+  var at = card.querySelector('.cp-tab-'+pilar);
   if(at) at.classList.add('active');
-  card.querySelectorAll('.cp-panel').forEach(function(p){p.style.display='none';});
-  const ap = card.querySelector('.cp-panel-'+pilar);
+  var allPanels = card.querySelectorAll('.cp-panel');
+  for(var j=0;j<allPanels.length;j++) allPanels[j].style.display='none';
+  var ap = card.querySelector('.cp-panel-'+pilar);
   if(ap) ap.style.display='block';
 }
 
@@ -5707,45 +5709,43 @@ function deleteCurrentCard(){
 
 // ── VI Month Navigation ─────────────────────────────────────────
 function selectVIMonth(cardId, idx){
-  const hist = _VI_REG[cardId];
+  var hist = _VI_REG[cardId];
   if(!hist || !hist[idx]) return;
-  const h = hist[idx];
-  const c = h.c || 0;
-  const p = h.p || 0;
-  const sectionId = 'vi-'+cardId;
-  const sec = document.getElementById(sectionId);
+  var h    = hist[idx];
+  var c    = h.c   || 0;
+  var p    = h.p   || 0;
+  var v    = h.v   || 0;
+  var avg  = h.avg !== undefined ? h.avg : null;
+  var sec  = document.getElementById('vi-'+cardId);
   if(!sec) return;
-  // Update active button
-  sec.querySelectorAll('.vi-mon-btn').forEach(function(b){b.classList.remove('active');});
-  const btns = sec.querySelectorAll('.vi-mon-btn');
+  // ── Active month button (for loop — NodeList.forEach fails on old Android)
+  var btns = sec.querySelectorAll('.vi-mon-btn');
+  for(var bi=0; bi<btns.length; bi++) btns[bi].classList.remove('active');
   if(btns[idx]) btns[idx].classList.add('active');
-  // Update stats
-  const statsEl = document.getElementById('vi-stats-'+cardId);
+  // ── Stats block
+  var statsEl = document.getElementById('vi-stats-'+cardId);
   if(statsEl){
-    const col = c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)';
-    const sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
+    var col = c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)';
+    // Cumpl.
+    var sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
     if(sv0){ sv0.style.color=col; sv0.textContent=c+'%'; }
-    // Actualizar Valor ($)
-    const sv2 = statsEl.children[2] && statsEl.children[2].querySelector('.vi-sv');
-    if(sv2){
-      const v = h.v||0;
-      sv2.textContent = '$'+(v>0?Math.round(v).toLocaleString('es-CO'):'0');
+    // Promedio
+    if(avg !== null){
+      var sv1 = statsEl.children[1] && statsEl.children[1].querySelector('.vi-sv');
+      if(sv1){ sv1.style.color=avg>=80?'var(--green)':avg>=50?'var(--amber)':'var(--red)'; sv1.textContent=avg+'%'; }
     }
-    // Actualizar Pagado ($)
-    const sv3 = statsEl.children[3] && statsEl.children[3].querySelector('.vi-sv');
-    if(sv3){
-      sv3.textContent = p>0?'$'+Math.round(p).toLocaleString('es-CO'):'$0';
-      sv3.style.color = p>0?'var(--green)':'var(--red)';
-    }
+    // Valor ($)
+    var sv2 = statsEl.children[2] && statsEl.children[2].querySelector('.vi-sv');
+    if(sv2) sv2.textContent = '$'+(v>0?Math.round(v).toLocaleString('es-CO'):'0');
+    // Pagado ($)
+    var sv3 = statsEl.children[3] && statsEl.children[3].querySelector('.vi-sv');
+    if(sv3){ sv3.textContent=p>0?'$'+Math.round(p).toLocaleString('es-CO'):'$0'; sv3.style.color=p>0?'var(--green)':'var(--red)'; }
   }
-  // Update bar
-  const barEl = document.getElementById('vi-bar-'+cardId);
+  // ── Progress bar
+  var barEl = document.getElementById('vi-bar-'+cardId);
   if(barEl){
-    const fill = barEl.querySelector('.rmd-bf');
-    if(fill){
-      fill.style.width=c+'%';
-      fill.style.background=c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)';
-    }
+    var fill = barEl.querySelector('.rmd-bf');
+    if(fill){ fill.style.width=c+'%'; fill.style.background=c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)'; }
   }
 }
 

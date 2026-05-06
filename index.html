@@ -3922,7 +3922,7 @@ ${infoBar}${blockedBar}
       </div>
       <div class="rmd-bar"><div class="rmd-bf" style="width:${rmd.avg}%;background:${rmdColor(rmd.avg)}"></div></div>
       <div class="rmd-trips-compact"><div class="rmd-tc-header"><span class="rmd-tc-f">Fecha</span><span class="rmd-tc-p">Placa</span><span class="rmd-tc-tr">Transp.</span><span class="rmd-tc-e">Entrega</span><span class="rmd-tc-rc">Rechazo</span><span class="rmd-tc-r">RMD</span></div>
-        ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-tr">'+(t.tr||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+rmdColor(t.r||t.rmd||0)+'">'+((t.r||t.rmd)||0)+'%</span></div>').join('')}
+        ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-tr">'+(t.tr||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+(t.r>0?rmdColor(t.r):'var(--text3)')+'">'+((t.r>0)?(Math.round(t.r*10)/10+'%'):'—')+'</span></div>').join('')}
       </div>
       <div class="rmd-total">${rmd.v} viajes · Min ${rmd.mn}% · Max ${rmd.mx}%</div>
     </div>
@@ -6230,21 +6230,27 @@ function _parseXLSXForAutoLoad(rows, type) {
 
   if (type === 'ic') {
     const processed = {};
-    const cc_cols = ['CC Conductor', 'CC RR', 'CC AUXILIAR', 'CC AUXILIAR 2', 'CC AUXILIAR 3', 'CC', 'cc'];
+    const cc_col_keys = ['cc conductor', 'cc rr', 'cc auxiliar', 'cc auxiliar 2', 'cc auxiliar 3', 'cc', 'cedula'];
     rows.forEach(function(row) {
-      const fecha = row['FECHA DEL VIAJE'];
+      const rk = {};
+      Object.keys(row).forEach(function(k){ rk[k.trim().toLowerCase().replace(/\s+/g,' ')] = row[k]; });
+      const fecha = rk['fecha del viaje'];
       const fecha_str = fecha instanceof Date
         ? fecha.toISOString().slice(0, 10)
         : String(fecha || '').slice(0, 10);
-      const rmd_raw = parseFloat(row['RMD'] || 0) || 0;
-      const rmd_pct = rmd_raw <= 5 ? Math.round(rmd_raw / 5 * 1000) / 10 : rmd_raw;
-      const placa = String(row['PLACA DEL VEHÍCULO'] || row['PLACA'] || '');
-      const transporte = String(row['TRANSPORTE'] || '').trim();
-      const entrega_raw = parseFloat(row['ENTREGA'] || row['% ENTREGA'] || row['EFECTIVIDAD ENTREGA'] || row['Efectividad'] || row['Entrega en Rango'] || row['ENTREGA EN RANGO'] || 0) || undefined;
-      const rechazo_raw = parseFloat(row['RECHAZOS'] || row['RECHAZO'] || row['# RECHAZOS'] || row['Rechazos'] || row['Rechazo'] || 0) || undefined;
-      if (!fecha_str || !rmd_pct) return;
-      cc_cols.forEach(function(col) {
-        const cc = safe_cc_js(row[col]);
+      if (!fecha_str || fecha_str.length < 6) return;
+      const rmd_raw = parseFloat(rk['rmd'] || 0) || 0;
+      // Handle ratio (0-1), score out of 5 (1-5), or percentage (>5)
+      const rmd_pct = rmd_raw <= 0 ? 0
+                    : rmd_raw <= 1 ? Math.round(rmd_raw * 1000) / 10
+                    : rmd_raw <= 5 ? Math.round(rmd_raw / 5 * 1000) / 10
+                    : Math.round(rmd_raw * 10) / 10;
+      const placa = String(rk['placa del vehículo'] || rk['placa del vehiculo'] || rk['placa'] || '');
+      const transporte = String(rk['transporte'] || '').trim();
+      const entrega_raw = parseFloat(rk['entrega en rango'] || rk['entrega'] || rk['% entrega'] || rk['efectividad entrega'] || rk['efectividad'] || 0) || undefined;
+      const rechazo_raw = parseFloat(rk['rechazo'] || rk['rechazos'] || rk['# rechazos'] || 0) || undefined;
+      cc_col_keys.forEach(function(colKey) {
+        const cc = safe_cc_js(rk[colKey]);
         if (!cc) return;
         if (!processed[cc]) processed[cc] = [];
         const rec = { f: fecha_str, p: placa, r: rmd_pct };
@@ -6265,13 +6271,15 @@ function _parseXLSXForAutoLoad(rows, type) {
         return true;
       }).sort(function(a, b) { return b.f.localeCompare(a.f); });
       if (!deduped.length) return;
-      const rmds = deduped.map(function(t) { return t.r; });
+      const rmds = deduped.map(function(t) { return t.r; }).filter(function(r){ return r > 0; });
+      const latestRMD = deduped.find(function(t){ return t.r > 0; });
       summary[cc] = {
         v: deduped.length,
-        avg: Math.round(rmds.reduce(function(a, b) { return a + b; }, 0) / rmds.length * 10) / 10,
-        mn: Math.round(Math.min.apply(null, rmds) * 10) / 10,
-        mx: Math.round(Math.max.apply(null, rmds) * 10) / 10,
-        uf: deduped[0].f, up: deduped[0].p, ur: deduped[0].r,
+        avg: rmds.length ? Math.round(rmds.reduce(function(a, b) { return a + b; }, 0) / rmds.length * 10) / 10 : 0,
+        mn: rmds.length ? Math.round(Math.min.apply(null, rmds) * 10) / 10 : 0,
+        mx: rmds.length ? Math.round(Math.max.apply(null, rmds) * 10) / 10 : 0,
+        uf: deduped[0].f, up: deduped[0].p,
+        ur: latestRMD ? latestRMD.r : 0,
         rec: deduped.slice(0, 20)
       };
     });
@@ -6386,7 +6394,12 @@ function _applyAutoData(parsed) {
   }
 
   if (typeof role !== 'undefined' && role !== null) {
-    render();
+    if (role === 'team' && typeof openTeamView === 'function') {
+      // Team view renders into #team-card-container, not #main — render() wouldn't update it
+      openTeamView();
+    } else {
+      render();
+    }
     if (typeof showToast === 'function') showToast('📊 Datos cargados desde archivos XLSX');
   }
 }

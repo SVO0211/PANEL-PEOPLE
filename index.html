@@ -3898,7 +3898,7 @@ ${infoBar}${blockedBar}
         <span>💰</span>
         <span class="vi-hl">Variable — People</span>
         <div class="vi-month-nav">
-          ${(_VI_REG[cardId]={hist:vi.hist,globalAvg:vi.avg},'')/*store in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" data-card="'+cardId+'" data-idx="'+i+'">'+h.m+'</button>').join('')}
+          ${(_VI_REG[cardId]={hist:vi.hist,globalAvg:vi.avg},'')/*store hist+globalAvg in registry*/}${vi.hist.map((h,i)=>'<button class="vi-mon-btn'+(i===vi.hist.length-1?' active':'')+'" data-card="'+cardId+'" data-idx="'+i+'">'+h.m+'</button>').join('')}
         </div>
       </div>
       <div class="vi-stats" id="vi-stats-${cardId}">
@@ -5102,17 +5102,47 @@ function openTeamView(){
       })(tabs[ti]);
     }
     // ── Month navigation buttons ──────────────────────────────────
+    // Build a fresh per-card data map so we never depend on _VI_REG being
+    // populated at the exact right time after innerHTML replacement.
+    var viSec = card.querySelector('[id^="vi-"]');
+    var viCardId = viSec ? viSec.id.replace(/^vi-/, '') : null;
+    var viRegEntry = viCardId ? _VI_REG[viCardId] : null;
+    var viHist   = viRegEntry ? (Array.isArray(viRegEntry) ? viRegEntry : (viRegEntry.hist || null)) : null;
+    var viGlobalAvg = (viRegEntry && !Array.isArray(viRegEntry) && viRegEntry.globalAvg !== undefined) ? viRegEntry.globalAvg : null;
     var mons = card.querySelectorAll('.vi-mon-btn');
     for(var mi=0; mi<mons.length; mi++){
-      (function(btn){
-        var cid = btn.getAttribute('data-card');
-        var idx = parseInt(btn.getAttribute('data-idx'), 10);
-        if(!cid || isNaN(idx)) return;
+      (function(btn, btnIdx){
         btn.addEventListener('click', function(ev){
           if(ev && ev.stopPropagation) ev.stopPropagation();
-          selectVIMonth(cid, idx);
+          if(!viHist || !viHist[btnIdx]) return;
+          var h   = viHist[btnIdx];
+          var c   = (h.c !== undefined ? h.c : 0);
+          var p   = (h.p !== undefined ? h.p : 0);
+          var v   = (h.v !== undefined ? h.v : 0);
+          var avg = (h.avg !== undefined) ? h.avg : (viGlobalAvg !== null ? viGlobalAvg : null);
+          // Update active button
+          for(var bi=0; bi<mons.length; bi++) mons[bi].classList.remove('active');
+          btn.classList.add('active');
+          // Update stats
+          var statsEl = viSec ? viSec.querySelector('.vi-stats') : null;
+          if(statsEl){
+            var col = c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)';
+            var sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
+            if(sv0){ sv0.style.color=col; sv0.textContent=c+'%'; }
+            if(avg !== null){
+              var sv1 = statsEl.children[1] && statsEl.children[1].querySelector('.vi-sv');
+              if(sv1){ sv1.style.color=avg>=80?'var(--green)':avg>=50?'var(--amber)':'var(--red)'; sv1.textContent=avg+'%'; }
+            }
+            var sv2 = statsEl.children[2] && statsEl.children[2].querySelector('.vi-sv');
+            if(sv2) sv2.textContent = '$'+(v>0?Math.round(v).toLocaleString('es-CO'):'0');
+            var sv3 = statsEl.children[3] && statsEl.children[3].querySelector('.vi-sv');
+            if(sv3){ sv3.textContent=p>0?'$'+Math.round(p).toLocaleString('es-CO'):'$0'; sv3.style.color=p>0?'var(--green)':'var(--red)'; }
+          }
+          // Update bar
+          var barEl = viSec ? viSec.querySelector('.rmd-bar') : null;
+          if(barEl){ var fill=barEl.querySelector('.rmd-bf'); if(fill){ fill.style.width=c+'%'; fill.style.background=c>=80?'var(--green)':c>=50?'var(--amber)':'var(--red)'; } }
         });
-      })(mons[mi]);
+      })(mons[mi], mi);
     }
     // ── Restore previously active pilar (people/delivery/rr) ──────
     // After innerHTML replacement, the default-active tab is People. If the
@@ -5709,16 +5739,15 @@ function deleteCurrentCard(){
 
 // ── VI Month Navigation ─────────────────────────────────────────
 function selectVIMonth(cardId, idx){
-  var reg  = _VI_REG[cardId];
-  if(!reg) return;
-  var hist = Array.isArray(reg.hist) ? reg.hist : reg; // support both {hist,avg} and plain array
+  var regEntry = _VI_REG[cardId];
+  var hist = regEntry ? (Array.isArray(regEntry) ? regEntry : (regEntry.hist || null)) : null;
   if(!hist || !hist[idx]) return;
   var h    = hist[idx];
+  var globalAvg = (regEntry && !Array.isArray(regEntry)) ? (regEntry.globalAvg || null) : null;
   var c    = (h.c !== undefined ? h.c : 0);
   var p    = (h.p !== undefined ? h.p : 0);
   var v    = (h.v !== undefined ? h.v : 0);
-  // avg: use per-entry avg if present, otherwise use global avg stored in registry
-  var avg  = (h.avg !== undefined) ? h.avg : (reg.globalAvg !== undefined ? reg.globalAvg : null);
+  var avg  = (h.avg !== undefined) ? h.avg : globalAvg;
   var sec  = document.getElementById('vi-'+cardId);
   if(!sec) return;
   // ── Active month button (for loop — NodeList.forEach fails on old Android)
@@ -5733,7 +5762,7 @@ function selectVIMonth(cardId, idx){
     var sv0 = statsEl.children[0] && statsEl.children[0].querySelector('.vi-sv');
     if(sv0){ sv0.style.color=col; sv0.textContent=c+'%'; }
     // Promedio
-    if(avg !== null && avg !== undefined){
+    if(avg !== null){
       var sv1 = statsEl.children[1] && statsEl.children[1].querySelector('.vi-sv');
       if(sv1){ sv1.style.color=avg>=80?'var(--green)':avg>=50?'var(--amber)':'var(--red)'; sv1.textContent=avg+'%'; }
     }

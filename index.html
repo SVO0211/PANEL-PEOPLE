@@ -1560,7 +1560,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 /* ── Delivery trip table with headers ── */
 .rmd-tc-header{
   display:grid;
-  grid-template-columns:38px 1fr 48px 48px 42px;
+  grid-template-columns:38px 1fr 52px 48px 48px 42px;
   gap:6px;align-items:center;
   font-size:.56rem;font-family:var(--mo);text-transform:uppercase;
   letter-spacing:.07em;color:var(--text3);
@@ -1569,7 +1569,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 }
 .rmd-tc-row{
   display:grid;
-  grid-template-columns:38px 1fr 48px 48px 42px;
+  grid-template-columns:38px 1fr 52px 48px 48px 42px;
   gap:6px;align-items:center;
   font-size:.62rem;padding:4px 8px;
   border-bottom:1px solid var(--border);
@@ -1578,6 +1578,7 @@ html { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
 .rmd-tc-row:nth-child(even){background:var(--surface2)}
 .rmd-tc-f{color:var(--text3);font-family:var(--mo);text-align:left}
 .rmd-tc-p{color:var(--text);font-weight:600}
+.rmd-tc-tr{font-size:.58rem;color:var(--text2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rmd-tc-e{font-family:var(--mo);font-weight:700;text-align:right}
 .rmd-tc-rc{font-family:var(--mo);text-align:right;color:var(--text2)}
 .rmd-tc-r{font-family:var(--mo);font-weight:700;text-align:right}
@@ -3920,8 +3921,8 @@ ${infoBar}${blockedBar}
         <div class="rmd-ck"><div class="rmd-ck-val rmd-ck-sm">${rmd.uf||'—'}</div><div class="rmd-ck-lbl">Fecha</div></div>
       </div>
       <div class="rmd-bar"><div class="rmd-bf" style="width:${rmd.avg}%;background:${rmdColor(rmd.avg)}"></div></div>
-      <div class="rmd-trips-compact"><div class="rmd-tc-header"><span class="rmd-tc-f">Fecha</span><span class="rmd-tc-p">Placa</span><span class="rmd-tc-e">Entrega</span><span class="rmd-tc-rc">Rechazo</span><span class="rmd-tc-r">RMD</span></div>
-        ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+rmdColor(t.r||t.rmd||0)+'">'+((t.r||t.rmd)||0)+'%</span></div>').join('')}
+      <div class="rmd-trips-compact"><div class="rmd-tc-header"><span class="rmd-tc-f">Fecha</span><span class="rmd-tc-p">Placa</span><span class="rmd-tc-tr">Transp.</span><span class="rmd-tc-e">Entrega</span><span class="rmd-tc-rc">Rechazo</span><span class="rmd-tc-r">RMD</span></div>
+        ${rmd.rec.map(t=>'<div class="rmd-tc-row"><span class="rmd-tc-f">'+(t.f||t.fecha||'').slice(5)+'</span><span class="rmd-tc-p">'+(t.p||t.placa||'—')+'</span><span class="rmd-tc-tr">'+(t.tr||'—')+'</span><span class="rmd-tc-e" style="color:'+(t.e>=80?'var(--green)':t.e>=50?'var(--amber)':'var(--red)')+'">'+((t.e!==undefined)?t.e+'%':'—')+'</span><span class="rmd-tc-rc" style="color:'+(t.rc===0?'var(--green)':t.rc<5?'var(--amber)':'var(--red)')+'">'+((t.rc!==undefined)?t.rc:'—')+'</span><span class="rmd-tc-r" style="color:'+rmdColor(t.r||t.rmd||0)+'">'+((t.r||t.rmd)||0)+'%</span></div>').join('')}
       </div>
       <div class="rmd-total">${rmd.v} viajes · Min ${rmd.mn}% · Max ${rmd.mx}%</div>
     </div>
@@ -5364,14 +5365,16 @@ function processUploadedRows(rows, type, filename, label, stat, zone, prev){
       const rmd_raw = parseFloat(row['RMD']||0)||0;
       const rmd_pct = rmd_raw<=5 ? Math.round(rmd_raw/5*1000)/10 : rmd_raw; // 1-5 → 0-100%
       const placa = String(row['PLACA DEL VEHÍCULO']||row['PLACA']||'');
-      const entrega_raw = parseFloat(row['ENTREGA']||row['% ENTREGA']||row['EFECTIVIDAD ENTREGA']||row['Efectividad']||0)||undefined;
-      const rechazo_raw = parseFloat(row['RECHAZOS']||row['RECHAZO']||row['# RECHAZOS']||row['Rechazos']||0)||undefined;
+      const transporte = String(row['TRANSPORTE']||'').trim();
+      const entrega_raw = parseFloat(row['ENTREGA']||row['% ENTREGA']||row['EFECTIVIDAD ENTREGA']||row['Efectividad']||row['Entrega en Rango']||row['ENTREGA EN RANGO']||0)||undefined;
+      const rechazo_raw = parseFloat(row['RECHAZOS']||row['RECHAZO']||row['# RECHAZOS']||row['Rechazos']||row['Rechazo']||0)||undefined;
       if(!fecha_str||!rmd_pct) return;
       cc_cols.forEach(function(col){
         const cc = safe_cc_js(row[col]);
         if(!cc) return;
         if(!processed[cc]) processed[cc]=[];
         const rec = {f:fecha_str, p:placa, r:rmd_pct};
+        if(transporte) rec.tr = transporte;
         if(entrega_raw!==undefined && !isNaN(entrega_raw)) rec.e = Math.round(entrega_raw*10)/10;
         if(rechazo_raw!==undefined && !isNaN(rechazo_raw)) rec.rc = Math.round(rechazo_raw*100)/100;
         processed[cc].push(rec);
@@ -6190,6 +6193,197 @@ const _fbSyncEnabled = true;
 function fbStatus(){
   return _fbReady ? '☁️ Conectado' : '💾 Solo local';
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  CARGA AUTOMÁTICA DE XLSX DESDE archivos/
+//  Cada vez que se actualicen los archivos en el repo de GitHub
+//  y se haga push, la página cargará automáticamente los datos.
+// ══════════════════════════════════════════════════════════════════
+function _parseXLSXForAutoLoad(rows, type) {
+  if (type === 'vi') {
+    const processed = {};
+    rows.forEach(function(row) {
+      const cc = safe_cc_js(row['CC'] || row['cc'] || row['Cc']);
+      if (!cc) return;
+      const mes = String(row['FECHA'] || row['Fecha'] || '').trim().toUpperCase();
+      const cumpl = parseFloat(row['CUMPLIMIENTO DE VARIABLE'] || row['cumplimiento de variable'] || 0) || 0;
+      const valor = parseFloat(row['VALOR DE LA VARIABLE'] || 0) || 0;
+      const pagado = parseFloat(row['VARIABLE PAGADA'] || 0) || 0;
+      if (!mes) return;
+      if (!processed[cc]) processed[cc] = [];
+      processed[cc].push({ m: mes, c: Math.round(cumpl * 1000) / 10, v: Math.round(valor), p: Math.round(pagado) });
+    });
+    return processed;
+  }
+
+  if (type === 'ic') {
+    const processed = {};
+    const cc_cols = ['CC Conductor', 'CC RR', 'CC AUXILIAR', 'CC AUXILIAR 2', 'CC AUXILIAR 3', 'CC', 'cc'];
+    rows.forEach(function(row) {
+      const fecha = row['FECHA DEL VIAJE'];
+      const fecha_str = fecha instanceof Date
+        ? fecha.toISOString().slice(0, 10)
+        : String(fecha || '').slice(0, 10);
+      const rmd_raw = parseFloat(row['RMD'] || 0) || 0;
+      const rmd_pct = rmd_raw <= 5 ? Math.round(rmd_raw / 5 * 1000) / 10 : rmd_raw;
+      const placa = String(row['PLACA DEL VEHÍCULO'] || row['PLACA'] || '');
+      const transporte = String(row['TRANSPORTE'] || '').trim();
+      const entrega_raw = parseFloat(row['ENTREGA'] || row['% ENTREGA'] || row['EFECTIVIDAD ENTREGA'] || row['Efectividad'] || row['Entrega en Rango'] || row['ENTREGA EN RANGO'] || 0) || undefined;
+      const rechazo_raw = parseFloat(row['RECHAZOS'] || row['RECHAZO'] || row['# RECHAZOS'] || row['Rechazos'] || row['Rechazo'] || 0) || undefined;
+      if (!fecha_str || !rmd_pct) return;
+      cc_cols.forEach(function(col) {
+        const cc = safe_cc_js(row[col]);
+        if (!cc) return;
+        if (!processed[cc]) processed[cc] = [];
+        const rec = { f: fecha_str, p: placa, r: rmd_pct };
+        if (transporte) rec.tr = transporte;
+        if (entrega_raw !== undefined && !isNaN(entrega_raw)) rec.e = Math.round(entrega_raw * 10) / 10;
+        if (rechazo_raw !== undefined && !isNaN(rechazo_raw)) rec.rc = Math.round(rechazo_raw * 100) / 100;
+        processed[cc].push(rec);
+      });
+    });
+    const summary = {};
+    Object.keys(processed).forEach(function(cc) {
+      const trips = processed[cc];
+      const seen = new Set();
+      const deduped = trips.filter(function(t) {
+        const k = t.f + t.p;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).sort(function(a, b) { return b.f.localeCompare(a.f); });
+      if (!deduped.length) return;
+      const rmds = deduped.map(function(t) { return t.r; });
+      summary[cc] = {
+        v: deduped.length,
+        avg: Math.round(rmds.reduce(function(a, b) { return a + b; }, 0) / rmds.length * 10) / 10,
+        mn: Math.round(Math.min.apply(null, rmds) * 10) / 10,
+        mx: Math.round(Math.max.apply(null, rmds) * 10) / 10,
+        uf: deduped[0].f, up: deduped[0].p, ur: deduped[0].r,
+        rec: deduped.slice(0, 20)
+      };
+    });
+    return summary;
+  }
+
+  if (type === 'rr') {
+    const MO = { 'Enero':1,'Febrero':2,'Marzo':3,'Abril':4,'Mayo':5,'Junio':6,'Julio':7,'Agosto':8,'Septiembre':9,'Octubre':10,'Noviembre':11,'Diciembre':12 };
+    const processed = {};
+    rows.forEach(function(row) {
+      const cc = safe_cc_js(row['CC'] || row['cc']);
+      if (!cc) return;
+      const mes = String(row['MES'] || '').trim();
+      const causa = String(row['Causa Raiz'] || '').trim().slice(0, 70);
+      const sol = String(row['Solución'] || row['Solucion'] || '').trim().slice(0, 60);
+      if (!mes || !causa) return;
+      if (!processed[cc]) processed[cc] = [];
+      const cod_cli = String(row['Codigo Cliente'] || row['codigo cliente'] || row['CODIGO CLIENTE'] || '').replace(/\.0$/, '').trim();
+      const nom_cli = String(row['Nombre Cliente'] || row['nombre cliente'] || row['NOMBRE CLIENTE'] || '').trim().slice(0, 40);
+      processed[cc].push({ mo: MO[mes] || 99, m: mes.slice(0, 3), c: causa, s: sol, cc: cod_cli, nc: nom_cli });
+    });
+    const summary = {};
+    Object.keys(processed).forEach(function(cc) {
+      summary[cc] = processed[cc]
+        .sort(function(a, b) { return a.mo - b.mo; })
+        .map(function(r) { return { m: r.m, c: r.c, s: r.s, cc: r.cc, nc: r.nc }; });
+    });
+    return summary;
+  }
+  return null;
+}
+
+function autoLoadXLSXFiles() {
+  if (typeof XLSX === 'undefined') {
+    console.warn('[AutoLoad] SheetJS no disponible — carga automática omitida');
+    return;
+  }
+  const files = [
+    { path: 'archivos/VARIABLE INDICADORES.xlsx', type: 'vi' },
+    { path: 'archivos/CARGUE GENERAL 29.xlsx',    type: 'ic' },
+    { path: 'archivos/Reportes en ruta.xlsx',      type: 'rr' }
+  ];
+  let pending = files.length;
+  const parsed = {};
+
+  files.forEach(function(f) {
+    fetch(f.path + '?t=' + Date.now())
+      .then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.arrayBuffer();
+      })
+      .then(function(buf) {
+        const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        const result = _parseXLSXForAutoLoad(rows, f.type);
+        if (result) parsed[f.type] = result;
+        console.log('[AutoLoad] ✓', f.path, '—', Object.keys(result || {}).length, 'personas');
+      })
+      .catch(function(err) {
+        console.warn('[AutoLoad] ✗', f.path, '—', err.message);
+      })
+      .finally(function() {
+        pending--;
+        if (pending === 0) _applyAutoData(parsed);
+      });
+  });
+}
+
+function _applyAutoData(parsed) {
+  const monthOrder = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+  if (parsed.vi && Object.keys(parsed.vi).length) {
+    PEOPLE_DATA.vi = {};
+    Object.keys(parsed.vi).forEach(function(cc) {
+      const recs = parsed.vi[cc];
+      const hist = recs.map(function(r) { return { m: r.m, c: r.c, v: r.v || 0, p: r.p || 0 }; });
+      hist.sort(function(a, b) { return monthOrder.indexOf(a.m) - monthOrder.indexOf(b.m); });
+      const last = hist[hist.length - 1];
+      const avg = hist.length ? hist.reduce(function(a, h) { return a + h.c; }, 0) / hist.length : 0;
+      PEOPLE_DATA.vi[cc] = {
+        meses: hist.map(function(h) { return h.m; }),
+        ultimo: last ? last.m : '',
+        uc: last ? last.c : 0,
+        avg: Math.round(avg * 10) / 10,
+        uv: last ? (last.v || 0) : 0,
+        up: last ? (last.p || 0) : 0,
+        hist: hist
+      };
+    });
+  }
+
+  if (parsed.ic && Object.keys(parsed.ic).length) {
+    PEOPLE_DATA.ic = parsed.ic;
+  }
+
+  if (parsed.rr && Object.keys(parsed.rr).length) {
+    window.RR_DATA = {};
+    Object.keys(parsed.rr).forEach(function(cc) {
+      // Almacenar como array directo (igual que el formato hardcodeado) para que getRR() funcione
+      RR_DATA[cc] = Array.isArray(parsed.rr[cc]) ? parsed.rr[cc] : [];
+    });
+  }
+
+  if (typeof role !== 'undefined' && role !== null) {
+    render();
+    if (typeof showToast === 'function') showToast('📊 Datos cargados desde archivos XLSX');
+  }
+}
+
+// Iniciar carga automática al cargar la página
+document.addEventListener('DOMContentLoaded', function() {
+  if (typeof XLSX !== 'undefined') {
+    autoLoadXLSXFiles();
+  } else {
+    var _retries = 0;
+    var _check = setInterval(function() {
+      if (typeof XLSX !== 'undefined' || ++_retries > 15) {
+        clearInterval(_check);
+        if (typeof XLSX !== 'undefined') autoLoadXLSXFiles();
+      }
+    }, 300);
+  }
+});
 </script>
 </body>
 </html>
